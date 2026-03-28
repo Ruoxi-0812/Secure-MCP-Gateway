@@ -31,11 +31,11 @@ Defended:   client → MCP1 → S → MCP2
 ### Layer 1: Communication Security
 
 - Authentication: public key signatures  
-- Anti-replay: timestamp and nonce  
+- Replay protection: timestamp and nonce  
 - Integrity: signed requests  
 - Session control: state machine enforcement  
 - Secure channel: TLS / mTLS  
-
+ 
 ### Layer 2: Capability Security
 
 - Authorization
