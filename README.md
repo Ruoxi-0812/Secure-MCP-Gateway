@@ -30,25 +30,25 @@ Defended:   client → MCP1 → S → MCP2
 
 ### Layer 1: Communication Security
 
-- **Impersonation protection** using public key signatures  
-- **Replay protection** using timestamp and nonce enforcement  
-- **Message integrity** enforced through signature-bound requests  
-- **Session security** via a strict session state machine  
-- **MITM protection** using TLS / mTLS  
+- Impersonation protection using public key signatures  
+- Replay protection using timestamp and nonce enforcement  
+- Message integrity enforced through signature-bound requests  
+- Session security via a session state machine  
+- MITM protection using TLS / mTLS  
 
 ### Layer 2: Capability Security
 
-- **Authorization (ACL)** to control tool access  
-- **Least privilege** by exposing only safe capabilities  
-- **Tool isolation** to prevent access to sensitive operations  
+- Authorization to control tool access  
+- Least privilege by exposing only safe capabilities  
+- Tool isolation to prevent access to sensitive operations  
 
 
 ## Project Structure
 
-secure-proxy/        # security middleware S  
-malicious-mcp1/      # malicious MCP1
-tests/               # aseline and defended tests
-workspace/           # demo files, including public and secret data
+- secure-proxy/ — security middleware S  
+- malicious-mcp1/ — malicious MCP1
+- tests/ — baseline and defended tests
+- workspace/ — demo files, including public and secret data
 
 
 ## Key Components
