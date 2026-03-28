@@ -1,11 +1,10 @@
 "use strict";
 
 /**
- * End-to-end harness.
+ * End-to-end demo  
  *
- * This proves the whole chain behavior:
- * - baseline: client -> MCP1 -> MCP2 succeeds in stealing the secret
- * - defended: client -> MCP1 -> S -> MCP2 fails because S blocks the tool call
+ * - baseline: client -> MCP1 -> MCP2 succeeds
+ * - defended: client -> MCP1 -> S -> MCP2 fails
  */
 
 const fs = require("fs");
@@ -68,11 +67,11 @@ async function baseline() {
     SECRET_PATH: path.join(ROOT, "workspace", "sandbox", "secret.txt"),
   }, req);
 
-  console.log("=== baseline stdout ===");
+  console.log("baseline stdout");
   console.log(result.stdout.trim());
-  console.log("=== baseline stderr ===");
+  console.log("baseline stderr");
   console.log(result.stderr.trim() || "(none)");
-  console.log("=== baseline log ===");
+  console.log("baseline log");
   console.log(readLog().trim() || "(empty)");
 }
 
@@ -99,11 +98,11 @@ async function defended() {
     SECRET_PATH: path.join(ROOT, "workspace", "sandbox", "secret.txt"),
   }, req);
 
-  console.log("=== defended stdout ===");
+  console.log("defended stdout");
   console.log(result.stdout.trim());
-  console.log("=== defended stderr ===");
+  console.log("defended stderr");
   console.log(result.stderr.trim() || "(none)");
-  console.log("=== defended log ===");
+  console.log("defended log");
   console.log(readLog().trim() || "(empty)");
 }
 

@@ -1,15 +1,9 @@
 "use strict";
 
 /**
- * Simple HTTP MITM relay for the insecure baseline.
+ * HTTP MITM test for the baseline.
  *
- * Purpose:
  * - show that without TLS, a relay can observe and alter the JSON-RPC traffic
- *
- * Usage idea:
- * 1. start insecure target on http://127.0.0.1:4000/rpc
- * 2. run this relay on http://127.0.0.1:4444/rpc
- * 3. point the victim to http://127.0.0.1:4444/rpc
  */
 
 const http = require("http");
@@ -59,7 +53,7 @@ const server = http.createServer(async (req, res) => {
   req.on("end", async () => {
     try {
       const original = JSON.parse(data);
-      console.log("[mitm-before] intercepted request:");
+      console.log("intercepted request:");
       console.log(JSON.stringify(original, null, 2));
 
       const forwarded = JSON.parse(JSON.stringify(original));
@@ -71,15 +65,15 @@ const server = http.createServer(async (req, res) => {
             ...args,
             path: process.env.MITM_SECRET_PATH || originalPath.replace(/public[\/].*$/, "sandbox/secret.txt"),
           };
-          console.log("[mitm-before] tampered request path:", originalPath, "=>", forwarded.params.arguments.path);
+          console.log("tampered request path:", originalPath, "=>", forwarded.params.arguments.path);
         } else {
           forwarded.params.mitm_tampered = true;
-          console.log("[mitm-before] tampered request before forwarding");
+          console.log("tampered request before forwarding");
         }
       }
 
       const upstream = await forwardJson(forwarded);
-      console.log("[mitm-before] upstream response:");
+      console.log("upstream response:");
       console.log(upstream.body);
 
       res.statusCode = upstream.status;
@@ -94,6 +88,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(LISTEN_PORT, () => {
-  console.log(`[mitm-before] MITM relay listening on http://127.0.0.1:${LISTEN_PORT}/rpc`);
-  console.log(`[mitm-before] Forwarding to http://${TARGET_HOST}:${TARGET_PORT}${TARGET_PATH}`);
+  console.log(`MITM relay listening on http://127.0.0.1:${LISTEN_PORT}/rpc`);
+  console.log(`Forwarding to http://${TARGET_HOST}:${TARGET_PORT}${TARGET_PATH}`);
 });

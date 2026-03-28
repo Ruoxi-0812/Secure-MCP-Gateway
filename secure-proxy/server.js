@@ -2,21 +2,6 @@
 
 /**
  * S = Security Middleware
- *
- * Layer 1: Communication Security
- * - public-key signatures
- * - signature-bound request integrity
- * - timestamp + nonce anti-replay
- * - strict session state machine (s.init -> s.ready -> tools/call)
- * - optional TLS / mTLS
- *
- * Layer 2: Capability Security
- * - ACL / allowlist
- * - least privilege
- * - tool isolation
- *
- * Upstream: HTTP(S) POST /rpc
- * Downstream: spawn MCP2 once over stdio
  */
 
 const express = require("express");
@@ -298,8 +283,8 @@ function verifyAuth(body) {
 
 function isToolInvocationAllowed(toolName) {
   const policy = TOOL_POLICIES[toolName];
-  if (!policy) return false;           // default deny
-  return policy.safe === true;         // only safe tools allowed
+  if (!policy) return false;          
+  return policy.safe === true;        
 }
 
 function jsonRpcErrorObj(id, code, message) {

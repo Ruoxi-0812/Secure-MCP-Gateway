@@ -3,15 +3,12 @@
 /**
  * Baseline attack tests before S.
  *
- * Target:
- *   client / malicious MCP1 -> insecure_mcp2_http -> MCP2
- *
  * Demonstrates that, before S, the following are present:
  * - Impersonation: no caller verification
  * - Replay: same request accepted repeatedly
  * - Tampering: MITM can change request path
  * - No session control: sensitive tools callable directly
- * - MITM visibility: proxy can read/modify traffic (use mitm_network_before_tls.js)
+ * - MITM visibility: proxy can read/modify traffic
  */
 
 const http = require("http");
@@ -71,9 +68,8 @@ function postJson(urlStr, bodyObj) {
 }
 
 async function testImpersonation() {
-  console.log("\n== Baseline: Impersonation exists ==");
+  console.log("\n Baseline: Impersonation exists ");
 
-  // warm up once so the downstream is fully initialized
   await postJson(TARGET_URL, {
     jsonrpc: "2.0",
     id: "warmup-1",
@@ -99,11 +95,11 @@ async function testImpersonation() {
 
   const r = await postJson(TARGET_URL, body);
   console.log(r.status, JSON.stringify(r.json || r.raw, null, 2));
-  console.log("Expected: baseline ignores the fake auth block entirely and still returns the file.");
+  console.log("Expected: baseline ignores the fake auth block entirely and still returns the file");
 }
 
 async function testReplay() {
-  console.log("\n== Baseline: Replay exists ==");
+  console.log("\n Baseline: Replay exists ");
   const body = {
     jsonrpc: "2.0",
     id: "rep-1",
@@ -120,7 +116,7 @@ async function testReplay() {
 }
 
 async function testNoSessionControl() {
-  console.log("\n== Baseline: No session control ==");
+  console.log("\n Baseline: No session control ");
   const body = {
     jsonrpc: "2.0",
     id: "sess-1",
@@ -135,8 +131,8 @@ async function testNoSessionControl() {
 }
 
 async function testTamperingViaMitm() {
-  console.log("\n== Baseline: Tampering via MITM ==");
-  console.log("Run mitm_network_before_tls.js with MITM_TAMPER=true before this test.");
+  console.log("\n Baseline: Tampering ");
+  console.log("Run mitm_network_before_tls.js with MITM_TAMPER=true before this test");
   const body = {
     jsonrpc: "2.0",
     id: "tamper-1",
@@ -148,7 +144,7 @@ async function testTamperingViaMitm() {
   };
   const r = await postJson(MITM_URL, body);
   console.log(r.status, JSON.stringify(r.json || r.raw, null, 2));
-  console.log("Expected: MITM changes harmless path into secret path, so the returned content should no longer be the harmless file.");
+  console.log("Expected: MITM changes harmless path into secret path, so the returned content should no longer be the harmless file");
 }
 
 async function main() {

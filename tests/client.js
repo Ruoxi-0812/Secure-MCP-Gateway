@@ -1,10 +1,8 @@
 "use strict";
 
 /**
- * Component-level tests against S.
+ * Security tests for S.
  *
- * This file tests S directly.
- * It is useful for proving the gateway itself enforces:
  * - auth
  * - anti-replay
  * - tamper detection
@@ -233,23 +231,23 @@ async function createReadySession() {
 }
 
 async function demo() {
-  console.log("== initialize ==");
+  console.log("initialize:");
   console.log((await callInitialize("0")).json || (await callInitialize("0")).raw);
 
-  console.log("== notifications/initialized ==");
+  console.log("notifications/initialized:");
   console.log((await callInitialized()).json || (await callInitialized()).raw);
 
-  console.log("== tools/list ==");
+  console.log("tools/list:");
   const listResp = await callToolsList("1");
   console.log(listResp.status, listResp.json || listResp.raw);
 
   const { sid } = await createReadySession();
 
-  console.log("== allowed tool ==");
+  console.log("allowed tool:");
   const r1 = await callTool("list_allowed_directories", {}, { id: "4", session_id: sid });
   console.log(r1.status, r1.json || r1.raw);
 
-  console.log("== denied tool ==");
+  console.log("denied tool:");
   const r2 = await callTool("read_file", { path: SECRET_PATH }, { id: "5", session_id: sid });
   console.log(r2.status, r2.json || r2.raw);
 }

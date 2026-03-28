@@ -3,12 +3,8 @@
 /**
  * Insecure baseline wrapper around MCP2.
  *
- * Purpose:
  * - expose MCP2 over plain HTTP with no auth, no nonce, no session, no TLS
  * - make baseline attacks observable before adding S
- *
- * Upstream: HTTP POST /rpc
- * Downstream: spawn MCP2 once over stdio
  */
 
 const express = require("express");
@@ -57,7 +53,7 @@ function startMcp2() {
     try {
       msg = JSON.parse(trimmed);
     } catch {
-      console.log("[insecure-mcp2-http] non-json downstream line:", trimmed);
+      console.log("non-json downstream line:", trimmed);
       return;
     }
     if (msg.id !== undefined && msg.id !== null) {
@@ -69,12 +65,12 @@ function startMcp2() {
         waiter.resolve(msg);
       }
     } else {
-      console.log("[insecure-mcp2-http] downstream notification:", JSON.stringify(msg));
+      console.log("downstream notification:", JSON.stringify(msg));
     }
   });
 
   child.on("exit", (code, signal) => {
-    console.error("[insecure-mcp2-http] downstream exited", { code, signal });
+    console.error("downstream exited", { code, signal });
     for (const [id, waiter] of pending) {
       clearTimeout(waiter.timer);
       waiter.reject(new Error("downstream exited"));
@@ -138,11 +134,11 @@ app.post("/rpc", async (req, res) => {
   try {
     await initializeIfNeeded();
     const body = req.body;
-    console.log("[insecure-mcp2-http] upstream request:", JSON.stringify(body));
+    console.log("upstream request:", JSON.stringify(body));
     
     const downstreamBody = stripForDownstream(body);
     const response = await sendDownstream(downstreamBody);
-    console.log("[insecure-mcp2-http] downstream response:", JSON.stringify(response));
+    console.log("downstream response:", JSON.stringify(response));
     return res.status(200).json(response);
   } catch (e) {
     return res.status(502).json({
@@ -155,5 +151,5 @@ app.post("/rpc", async (req, res) => {
 
 const server = http.createServer(app);
 server.listen(PORT, () => {
-  console.log(`[insecure-mcp2-http] listening on http://127.0.0.1:${PORT}/rpc`);
+  console.log(`listening on http://127.0.0.1:${PORT}/rpc`);
 });
