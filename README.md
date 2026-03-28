@@ -13,9 +13,9 @@ This project evaluates the security properties of a secure middleware (S) in a m
 We focus on common client-server attack vectors, including:
 
 - impersonation  
+- replay attacks 
 - tampering  
-- replay attacks  
-- session hijacking  
+- session hijacking 
 - unauthorized access  
 - man-in-the-middle (MITM) attacks  
 
@@ -30,17 +30,17 @@ Defended:   client → MCP1 → S → MCP2
 
 ### Layer 1: Communication Security
 
-- Impersonation protection using public key signatures  
-- Replay protection using timestamp and nonce enforcement  
-- Message integrity enforced through signature-bound requests  
-- Session security via a session state machine  
-- MITM protection using TLS / mTLS  
+- Authentication: public key signatures  
+- Anti-replay: timestamp and nonce  
+- Integrity: signed requests  
+- Session control: state machine enforcement  
+- Secure channel: TLS / mTLS  
 
 ### Layer 2: Capability Security
 
-- Authorization to control tool access  
-- Least privilege by exposing only safe capabilities  
-- Tool isolation to prevent access to sensitive operations  
+- Authorization
+- Least privilege  
+- Tool isolation  
 
 
 ## Project Structure
