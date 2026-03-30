@@ -1,10 +1,12 @@
 "use strict";
 
 /**
- * End-to-end demo  
+ * End-to-end baseline and defended demo
  *
- * - baseline: client -> MCP1 -> MCP2 succeeds
- * - defended: client -> MCP1 -> S -> MCP2 fails
+ * Modes:
+ * - baseline:        client -> MCP1 -> MCP2 succeeds
+ * - defended:        client -> MCP1 -> S(http)  -> MCP2 fails
+ * - defended_tls:    client -> MCP1 -> S(https) -> MCP2 fails
  */
 
 const fs = require("fs");
@@ -13,6 +15,7 @@ const { spawn } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
 const LOG_FILE = path.join(ROOT, "malicious-mcp1", "logs", "app.log");
+const S_PORT = "4000";
 
 function runNode(script, env, inputObj) {
   return new Promise((resolve, reject) => {
@@ -24,8 +27,14 @@ function runNode(script, env, inputObj) {
 
     let stdout = "";
     let stderr = "";
-    proc.stdout.on("data", (d) => (stdout += d.toString("utf8")));
-    proc.stderr.on("data", (d) => (stderr += d.toString("utf8")));
+
+    proc.stdout.on("data", (d) => {
+      stdout += d.toString("utf8");
+    });
+    proc.stderr.on("data", (d) => {
+      stderr += d.toString("utf8");
+    });
+
     proc.on("error", reject);
     proc.on("close", (code) => resolve({ code, stdout, stderr }));
 
@@ -45,8 +54,144 @@ function readLog() {
   return fs.existsSync(LOG_FILE) ? fs.readFileSync(LOG_FILE, "utf8") : "";
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function startSecureProxy({ enableTls }) {
+  return new Promise((resolve, reject) => {
+    const script = path.join(ROOT, "secure-proxy", "server.js");
+
+    const env = {
+      ...process.env,
+      SECURE_PROXY_PORT: S_PORT,
+      ENABLE_TLS: enableTls ? "true" : "false",
+      ENABLE_MTLS: "false",
+      CALLER_KEYS_CONFIG: path.join(ROOT, "secure-proxy", "caller_keys.json"),
+      MCP2_COMMAND: process.execPath,
+      MCP2_ARGS: JSON.stringify([
+        path.join(
+          ROOT,
+          "node_modules",
+          "@modelcontextprotocol",
+          "server-filesystem",
+          "dist",
+          "index.js"
+        ),
+        path.join(ROOT, "workspace"),
+      ]),
+    };
+
+    const proc = spawn(process.execPath, [script], {
+      cwd: ROOT,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const cleanupListeners = () => {
+      proc.stdout.removeAllListeners("data");
+      proc.stderr.removeAllListeners("data");
+      proc.removeAllListeners("error");
+      proc.removeAllListeners("exit");
+    };
+
+    const readyMatcher = enableTls
+      ? `S listening on https://127.0.0.1:${S_PORT}/rpc`
+      : `S listening on http://127.0.0.1:${S_PORT}/rpc`;
+
+    proc.stdout.on("data", (d) => {
+      const text = d.toString("utf8");
+      stdout += text;
+
+      if (!settled && stdout.includes(readyMatcher)) {
+        settled = true;
+        cleanupListeners();
+        resolve({
+          proc,
+          stdout,
+          stderr,
+        });
+      }
+    });
+
+    proc.stderr.on("data", (d) => {
+      stderr += d.toString("utf8");
+    });
+
+    proc.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      cleanupListeners();
+      reject(err);
+    });
+
+    proc.on("exit", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      cleanupListeners();
+      reject(
+        new Error(
+          `secure-proxy exited before ready (code=${code}, signal=${signal})\nstdout:\n${stdout}\nstderr:\n${stderr}`
+        )
+      );
+    });
+
+    setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanupListeners();
+      try {
+        proc.kill("SIGTERM");
+      } catch {}
+      reject(
+        new Error(
+          `Timed out waiting for secure-proxy to be ready.\nstdout:\n${stdout}\nstderr:\n${stderr}`
+        )
+      );
+    }, 5000);
+  });
+}
+
+async function stopProcess(proc) {
+  if (!proc || proc.killed) return;
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {}
+    }, 2000);
+
+    proc.once("exit", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+
+    try {
+      proc.kill("SIGTERM");
+    } catch {
+      clearTimeout(timer);
+      resolve();
+    }
+  });
+}
+
+function printResult(label, result) {
+  console.log(`=== ${label} stdout ===`);
+  console.log(result.stdout.trim() || "(empty)");
+  console.log(`=== ${label} stderr ===`);
+  console.log(result.stderr.trim() || "(none)");
+  console.log(`=== ${label} log ===`);
+  console.log(readLog().trim() || "(empty)");
+}
+
 async function baseline() {
   clearLog();
+
   const req = {
     jsonrpc: "2.0",
     id: "1",
@@ -57,59 +202,102 @@ async function baseline() {
     },
   };
 
-  const result = await runNode(path.join(ROOT, "malicious-mcp1", "mcp1.js"), {
-    DOWNSTREAM_MODE: "direct",
-    MCP2_COMMAND: process.execPath,
-    MCP2_ARGS: JSON.stringify([
-      path.join(ROOT, "node_modules", "@modelcontextprotocol", "server-filesystem", "dist", "index.js"),
-      path.join(ROOT, "workspace"),
-    ]),
-    SECRET_PATH: path.join(ROOT, "workspace", "sandbox", "secret.txt"),
-  }, req);
+  const result = await runNode(
+    path.join(ROOT, "malicious-mcp1", "mcp1.js"),
+    {
+      DOWNSTREAM_MODE: "direct",
+      MCP2_COMMAND: process.execPath,
+      MCP2_ARGS: JSON.stringify([
+        path.join(
+          ROOT,
+          "node_modules",
+          "@modelcontextprotocol",
+          "server-filesystem",
+          "dist",
+          "index.js"
+        ),
+        path.join(ROOT, "workspace"),
+      ]),
+      SECRET_PATH: path.join(ROOT, "workspace", "sandbox", "secret.txt"),
+    },
+    req
+  );
 
-  console.log("baseline stdout");
-  console.log(result.stdout.trim());
-  console.log("baseline stderr");
-  console.log(result.stderr.trim() || "(none)");
-  console.log("baseline log");
-  console.log(readLog().trim() || "(empty)");
+  printResult("baseline", result);
 }
 
-async function defended() {
+async function runDefended({ enableTls, label, message }) {
   clearLog();
+
   const req = {
     jsonrpc: "2.0",
     id: "1",
     method: "tools/call",
     params: {
       name: "log_ops.write_log",
-      arguments: { message: "defended attack trigger" },
+      arguments: { message },
     },
   };
 
-  const result = await runNode(path.join(ROOT, "malicious-mcp1", "mcp1.js"), {
-    DOWNSTREAM_MODE: "via_s",
-    S_HOST: "127.0.0.1",
-    S_PORT: "4000",
-    S_PATH: "/rpc",
-    S_USE_TLS: "false",
-    CALLER_ID: "mcp1",
-    MCP1_PRIVATE_KEY_PATH: path.join(ROOT, "secure-proxy", "certs", "mcp1_private.pem"),
-    SECRET_PATH: path.join(ROOT, "workspace", "sandbox", "secret.txt"),
-  }, req);
+  let sProc;
+  try {
+    const started = await startSecureProxy({ enableTls });
+    sProc = started.proc;
 
-  console.log("defended stdout");
-  console.log(result.stdout.trim());
-  console.log("defended stderr");
-  console.log(result.stderr.trim() || "(none)");
-  console.log("defended log");
-  console.log(readLog().trim() || "(empty)");
+    await sleep(300);
+
+    const result = await runNode(
+      path.join(ROOT, "malicious-mcp1", "mcp1.js"),
+      {
+        DOWNSTREAM_MODE: "via_s",
+        S_HOST: enableTls ? "localhost" : "127.0.0.1",
+        S_PORT: S_PORT,
+        S_PATH: "/rpc",
+        S_USE_TLS: enableTls ? "true" : "false",
+        S_CA_PATH: enableTls
+          ? path.join(ROOT, "secure-proxy", "certs", "ca.crt")
+          : "",
+        CALLER_ID: "mcp1",
+        MCP1_PRIVATE_KEY_PATH: path.join(
+          ROOT,
+          "secure-proxy",
+          "certs",
+          "mcp1_private.pem"
+        ),
+        SECRET_PATH: path.join(ROOT, "workspace", "sandbox", "secret.txt"),
+      },
+      req
+    );
+
+    printResult(label, result);
+  } finally {
+    await stopProcess(sProc);
+  }
+}
+
+async function defended() {
+  return runDefended({
+    enableTls: false,
+    label: "defended",
+    message: "defended attack trigger",
+  });
+}
+
+async function defendedTls() {
+  return runDefended({
+    enableTls: true,
+    label: "defended_tls",
+    message: "defended tls attack trigger",
+  });
 }
 
 async function main() {
   const mode = process.argv[2] || "baseline";
+
   if (mode === "baseline") return baseline();
   if (mode === "defended") return defended();
+  if (mode === "defended_tls") return defendedTls();
+
   throw new Error(`Unknown mode: ${mode}`);
 }
 

@@ -57,7 +57,7 @@ Defended:   client → MCP1 → S → MCP2
 - malicious-mcp1/mcp1.js — malicious MCP1  
 - tests/baseline_attacks.js — baseline attacks before S
 - tests/baseline_mitm.js — HTTP MITM tests before S  
-- tests/client.js — security tests for S  
+- tests/protected_attacks.js — security tests for S  
 - tests/mitm_protected.js — MITM test with TLS-enabled S
 - tests/e2e_demo.js — end-to-end baseline and defended demo  
 
