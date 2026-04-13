@@ -9,14 +9,10 @@
  *   2. Defended latency        — N requests through S → MCP2 (session reused)
  *   3. Session establishment   — N_SESSIONS × (s.init + s.ready) handshake
  *
- * Per-request statistics reported: mean, min, max, p50, p95, p99 (ms).
+ * mean, min, max, p50, p95, p99 (ms).
  * Gateway resource usage (RSS memory, CPU time) sampled before/after load.
  * Raw per-request latencies written to CSV for charting.
  *
- * Prerequisites — generate keys once before running:
- *   openssl genrsa -out secure-proxy/certs/mcp1_private.pem 2048
- *   openssl rsa -in secure-proxy/certs/mcp1_private.pem -pubout \
- *           -out secure-proxy/certs/mcp1_public.pem
  */
 
 const fs     = require("fs");
@@ -25,7 +21,6 @@ const http   = require("http");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 
-// ── Logging ───────────────────────────────────────────────────────────────────
 (function setupLog() {
   const dir = path.join(__dirname, "..", "logs");
   fs.mkdirSync(dir, { recursive: true });
@@ -244,7 +239,7 @@ function computeStats(samples) {
 async function timedCall(fn) {
   const t0 = process.hrtime.bigint();
   await fn();
-  return Number(process.hrtime.bigint() - t0) / 1e6; // → milliseconds
+  return Number(process.hrtime.bigint() - t0) / 1e6; 
 }
 
 async function benchBaseline() {

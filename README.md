@@ -2,33 +2,24 @@
 
 ## Overview
 
-This project evaluates the security properties of a secure middleware (S) placed between two MCP processes:
-
+This project evaluates the security properties of a secure middleware (S) in a multi-MCP setting:
+ 
 ```
 client → MCP1 → S → MCP2
 ```
-
+ 
 - **MCP1** — a potentially malicious MCP that tries to steal data from downstream
 - **S (Gateway)** — the secure middleware being evaluated; enforces 5 defence layers
 - **MCP2** — a trusted filesystem MCP with access to sensitive files
+ 
+We focus on common client-server attack vectors, including:
 
-MCP1 and MCP2 communicate via **stdio + JSON-RPC** (local subprocess, no network port).  
-MCP1 and S communicate via **HTTP/HTTPS + JSON-RPC** (application-layer network request).  
-S and MCP2 communicate via **stdio + JSON-RPC** (S spawns MCP2 as a child process).
-
-Six attack categories are evaluated by running adversarial requests against both the unprotected baseline and the Gateway-protected configuration, and comparing outcomes.
-
----
-
-## Architecture
-
-```
-Baseline (no S):   MCP1 ──stdio──► MCP2          (no authentication, no ACL)
-
-Defended (with S): MCP1 ──HTTP/HTTPS──► S ──stdio──► MCP2
-                              │
-                         5 defence layers
-```
+- impersonation
+- replay attacks
+- tampering
+- session hijacking
+- unauthorized access
+- man-in-the-middle (MITM) attacks
 
 ---
 
@@ -44,39 +35,6 @@ Each request to S passes through five sequential defence layers before any tool 
 | 4 | **mTLS CN binding** | Certificate/identity mismatch between TLS client cert and claimed `caller_id` |
 | 5 | **Session state machine + ACL** | Session hijacking, skipped handshakes, forged proofs, unauthorised tool calls |
 
-> **Note on process names.** MCP has no system-enforced unique identifier equivalent to Android package names or app IDs. Process names are trivially spoofable. S therefore does not rely on process names; all identity claims are verified through Layer 3 cryptographic signatures using pre-registered RSA public keys.
-
-> **Trust assumption.** S itself is assumed to be a trusted component (analogous to how browsers trust their pre-installed CA store). Key material and policies must be protected at deployment time. This is an explicit scope boundary, not a limitation of the cryptographic mechanisms.
-
----
-
-## Project Structure
-
-```
-.
-├── malicious-mcp1/
-│   ├── mcp1.js            # Attack-only: calls MCP2 directly via stdio (bypasses S)
-│   └── mcp1_via_s.js      # Same malicious intent, but routed through S (blocked by ACL)
-│
-├── secure-proxy/
-│   ├── server.js          # Gateway S — Express server implementing 5 defence layers
-│   ├── caller_keys.json   # Caller-ID → public-key map; hot-reloaded at runtime
-│   └── certs/             # RSA key pairs and TLS certificates
-│
-├── tests/
-│   ├── baseline_attacks.js    # 6 attacks against unprotected MCP2 (all succeed)
-│   ├── baseline_mitm.js       # MITM proxy for baseline attacks 3 and 6
-│   ├── protected_attacks.js   # 25 test cases against S (all blocked)
-│   ├── mitm_protected.js      # MITM attempt against TLS-enabled S (blocked)
-│   ├── e2e_demo.js            # End-to-end baseline vs. defended narrative demo
-│   ├── insecure_mcp2_http.js  # HTTP wrapper: exposes MCP2 with no auth (baseline target)
-│   ├── benchmark.js           # Performance benchmark: latency + resource usage
-│   └── defense_eval.js        # Combined security + performance evaluation report
-│
-└── workspace/
-    ├── public/hello.txt   # Harmless file (used in tampering tests)
-    └── sandbox/secret.txt # Sensitive file (attack target)
-```
 
 ---
 
@@ -119,11 +77,6 @@ The Gateway hot-reloads this file at runtime — no restart required.
 
 To add a second caller, add an entry and save the file; S picks it up immediately.
 
-### 4. (Optional) Generate TLS certificates
-
-Required only for `ENABLE_TLS=true` / `ENABLE_MTLS=true` modes and `mitm_protected.js`.  
-See comments inside `secure-proxy/server.js` for the full `openssl` CA + cert commands.
-
 ---
 
 ## Running the Experiments
@@ -136,11 +89,11 @@ Shows the attack succeeding without S, then being blocked with S:
 node tests/e2e_demo.js
 ```
 
-### Baseline attacks (no S — all 6 succeed)
+### Baseline attacks (no S)
 
 ```bash
 # Start the unprotected MCP2 HTTP wrapper first:
-node tests/insecure_mcp2_http.js &
+node tests/insecure_mcp2_http.js
 
 # Run all 6 attacks:
 node tests/baseline_attacks.js
@@ -154,14 +107,14 @@ node tests/baseline_attacks.js acl
 node tests/baseline_attacks.js mitm
 ```
 
-For attacks 3 (tampering) and 6 (MITM visibility), start the MITM proxy first:
+For attacks tampering and MITM visibility, start the MITM proxy first:
 
 ```bash
-node tests/baseline_mitm.js                   # visibility only
-MITM_TAMPER=true node tests/baseline_mitm.js  # also rewrites the file path
+node tests/baseline_mitm.js                   
+MITM_TAMPER=true node tests/baseline_mitm.js 
 ```
 
-### Protected attacks (with S — all blocked)
+### Protected attacks (with S)
 
 Start S first:
 
@@ -169,14 +122,12 @@ Start S first:
 node secure-proxy/server.js
 ```
 
-**Run all 25 tests at once (default):**
+**Run all tests at once:**
 
 ```bash
 MCP1_PRIVATE_KEY_PATH=secure-proxy/certs/mcp1_private.pem \
   node tests/protected_attacks.js
 ```
-
-Prints a per-test result and a summary table at the end. Two tests have special conditions (see notes below).
 
 **Run a single test case:**
 
@@ -225,54 +176,31 @@ MCP1_PRIVATE_KEY_PATH=secure-proxy/certs/mcp1_private.pem \
   node tests/protected_attacks.js
 ```
 
-**² `readytimeout`** — skipped by default because it intentionally waits `READY_WINDOW_MS + 1 s` (default: 61 s). Two ways to run it:
+**² `readytimeout`** — skipped by default because it intentionally waits `READY_WINDOW_MS + 1 s` (default: 61 s):
 
 ```bash
-# Option A — include the 61 s wait as-is
 SKIP_SLOW=false MCP1_PRIVATE_KEY_PATH=secure-proxy/certs/mcp1_private.pem \
   node tests/protected_attacks.js
-
-# Option B — shorten the ready window on the Gateway side (4 s total wait)
-READY_WINDOW_MS=3000 node secure-proxy/server.js        # Terminal 1
-SKIP_SLOW=false MCP1_PRIVATE_KEY_PATH=secure-proxy/certs/mcp1_private.pem \
-  node tests/protected_attacks.js                       # Terminal 2
 ```
 
 ### MITM against TLS-enabled S
 
-Verifies that a fake HTTPS relay is rejected by the client because its certificate is not signed by the trusted CA. The expected outcome is a TLS error — that is the passing result.
-
-**Step 1 — Generate TLS certs (one-time setup):**
+**Generate TLS certs:**
 
 ```bash
-# CA
-openssl genrsa -out secure-proxy/certs/ca.key 2048
-openssl req -new -x509 -days 3650 -key secure-proxy/certs/ca.key \
-  -out secure-proxy/certs/ca.crt -subj "/CN=TestCA"
-
-# Server cert signed by the CA
-openssl genrsa -out secure-proxy/certs/server.key 2048
-openssl req -new -key secure-proxy/certs/server.key \
-  -out secure-proxy/certs/server.csr -subj "/CN=127.0.0.1"
-openssl x509 -req -days 3650 \
-  -in secure-proxy/certs/server.csr \
-  -CA secure-proxy/certs/ca.crt -CAkey secure-proxy/certs/ca.key \
-  -CAcreateserial -out secure-proxy/certs/server.crt \
-  -extfile <(echo "subjectAltName=IP:127.0.0.1")
-
 # Fake MITM cert — self-signed with a different CA so the client rejects it
 openssl genrsa -out secure-proxy/certs/mitm.key 2048
 openssl req -new -x509 -days 3650 -key secure-proxy/certs/mitm.key \
   -out secure-proxy/certs/mitm.crt -subj "//CN=fake-mitm"
 ```
 
-**Step 2 — Start Gateway with TLS:**
+**Start Gateway with TLS:**
 
 ```bash
 ENABLE_TLS=true node secure-proxy/server.js
 ```
 
-**Step 3 — Run the MITM test:**
+**Run the MITM test:**
 
 ```bash
 CLIENT_SCRIPT=tests/protected_attacks.js \
@@ -283,13 +211,11 @@ CLIENT_SCRIPT=tests/protected_attacks.js \
   node tests/mitm_protected.js
 ```
 
-The test starts a fake HTTPS server with the untrusted `tests/certs/mitm.crt`, then runs the client against it. The client must reject the connection — if it does, the test reports "certificate correctly rejected".
-
 ---
 
-### Defense evaluation (security + performance, single report)
+### Defense evaluation
 
-Starts both servers automatically, runs all 6 attacks against baseline and S, then measures latency overhead and resource usage:
+Starts both servers automatically, runs all attacks against baseline and S, then measures latency overhead and resource usage:
 
 ```bash
 MCP1_PRIVATE_KEY_PATH=secure-proxy/certs/mcp1_private.pem \
@@ -310,7 +236,7 @@ EVAL_PERF_N=100 EVAL_PERF_NSESS=20 \
   node tests/defense_eval.js
 ```
 
-### Performance benchmark (detailed, with CSV output)
+### Performance benchmark
 
 Runs 3 scenarios and writes raw per-request latencies to `benchmark_results.csv` for charting:
 
@@ -324,30 +250,6 @@ BENCH_N=200 BENCH_N_SESSIONS=30 \
   node tests/benchmark.js
 ```
 
-Produces a results table (mean / min / max / p50 / p95 / p99) and a line:
-
-```
-Gateway overhead: +X.XXX ms mean (+Y.Y% relative to baseline)
-```
-
-Raw data in `benchmark_results.csv` can be plotted with pandas / matplotlib / Excel / R.
-
----
-
-## Caller Identity Registration
-
-Caller IDs and their public keys are declared in `secure-proxy/caller_keys.json`:
-
-```json
-{
-  "mcp1": "./certs/mcp1_public.pem",
-  "mcp_analytics": "./certs/analytics_public.pem"
-}
-```
-
-S watches this file with `fs.watch` and reloads it automatically whenever it changes.  
-If the file is malformed, S keeps the previous key set — existing callers are never locked out.
-
 ---
 
 ## Topology Notes
@@ -357,31 +259,3 @@ In a chain or mesh topology (`MCP1 → S₁ → MCP2 → S₂ → MCP3`), each d
 connection point can deploy its own Gateway instance with its own `caller_keys.json`  
 and `TOOL_POLICIES`. The design composes: each S independently enforces its local  
 policy without requiring a centralised coordinator.
-
----
-
-## Environment Variables
-
-### Gateway (secure-proxy/server.js)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SECURE_PROXY_PORT` | `4000` | Port S listens on |
-| `ENABLE_TLS` | `false` | Require TLS on incoming connections |
-| `ENABLE_MTLS` | `false` | Require mTLS client certificate |
-| `CALLER_KEYS_CONFIG` | `./caller_keys.json` | Path to caller-ID → public-key map |
-| `AUTH_TS_WINDOW_SEC` | `60` | Max timestamp skew allowed (seconds) |
-| `MAX_OPS_PER_SESSION` | `10` | Tool calls allowed per session |
-| `MCP2_ARGS` | — | JSON array: MCP2 command + allowed dirs |
-
-### Tests / benchmark
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MCP1_PRIVATE_KEY_PATH` | — | Path to MCP1's RSA private key |
-| `S_URL` | `http://127.0.0.1:4000/rpc` | Gateway endpoint for protected tests |
-| `BENCH_N` | `100` | Requests per benchmark scenario |
-| `BENCH_WARMUP` | `10` | Warmup requests (excluded from stats) |
-| `BENCH_N_SESSIONS` | `20` | Session establishments to time |
-| `EVAL_PERF_N` | `50` | Requests per scenario in defense_eval |
-| `EVAL_PERF_NSESS` | `10` | Session establishments in defense_eval |

@@ -4,18 +4,8 @@
  * Defense evaluation — all attacks run against both baseline (no S) and
  * the protected Gateway (S).
  *
- * For each attack this script:
- *   1. Describes the attacker's setup and intent
- *   2. Sends the attack to the unprotected baseline → shows it SUCCEEDS
- *   3. Sends the same attack to S → shows it is BLOCKED
- *   4. Records whether MCP2 was reached in each case
- *
  * Output: per-attack narrative and final summary table.
  *
- * Prerequisites — generate keys once:
- *   openssl genrsa -out secure-proxy/certs/mcp1_private.pem 2048
- *   openssl rsa -in secure-proxy/certs/mcp1_private.pem -pubout \
- *           -out secure-proxy/certs/mcp1_public.pem
  */
 
 const fs     = require("fs");
@@ -24,7 +14,6 @@ const http   = require("http");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 
-// ── Logging ───────────────────────────────────────────────────────────────────
 (function setupLog() {
   const dir = path.join(__dirname, "..", "logs");
   fs.mkdirSync(dir, { recursive: true });
@@ -36,7 +25,6 @@ const { spawn } = require("child_process");
     console[m] = (...a) => { const s = a.join(" "); orig(s); stream.write(prefix + s + "\n"); };
   }
 })();
-// ─────────────────────────────────────────────────────────────────────────────
 
 const ROOT = path.join(__dirname, "..");
 
@@ -181,7 +169,6 @@ async function establishSession() {
   return String(sid);
 }
 
-
 const GW_CODES = new Set([
   "unknown_caller", "missing_auth", "missing_caller_id", "missing_timestamp",
   "missing_nonce", "missing_signature", "bad_timestamp", "timestamp_out_of_window",
@@ -245,7 +232,6 @@ async function evalReplay() {
   console.log("  Attacker captures a legitimately signed request and resends it verbatim.");
   console.log("  S must reject any request whose nonce has already been seen.\n");
 
-  // Baseline: no nonce tracking — same request accepted twice
   const unsignedBody = { jsonrpc: "2.0", id: "rep-1", method: "tools/list", params: {} };
   const bl1 = classify(await postJson(BASELINE_URL, unsignedBody));
   const bl2 = classify(await postJson(BASELINE_URL, unsignedBody));
@@ -256,11 +242,9 @@ async function evalReplay() {
     console.log("\n  [Protected] SKIPPED — private key not found.");
     return { n: 2, name: "Replay", bl: bl2, pr: null, gwCode: "replay_nonce_reused" };
   }
-
-  // Protected: first send passes, identical nonce on replay is rejected
   const signed = buildSigned({ id: "rep-2", method: "tools/list", params: {} });
   const pr1 = classify(await postJson(GATEWAY_URL, signed));
-  const pr2 = classify(await postJson(GATEWAY_URL, signed)); // same object, same nonce
+  const pr2 = classify(await postJson(GATEWAY_URL, signed)); 
 
   printRow("Gateway 1st send", pr1);
   printRow("Gateway replay",   pr2);
@@ -273,7 +257,6 @@ async function evalTampering() {
   console.log("  rewrites the path argument to point at the secret file.");
   console.log("  S must detect the modification via signature verification.\n");
 
-  // Baseline: send tampered body directly — baseline ignores signatures
   const tampered = {
     jsonrpc: "2.0", id: "t-1", method: "tools/call",
     params: { name: "read_file", arguments: { path: SECRET_PATH } },
@@ -286,13 +269,12 @@ async function evalTampering() {
     return { n: 3, name: "Tampering", bl, pr: null, gwCode: "bad_signature" };
   }
 
-  // Protected: sign a valid request for harmless path, then modify params post-signing
   const original = buildSigned({
     id: "t-2", method: "tools/call",
     params: { name: "read_file", arguments: { path: HARMLESS_PATH } },
   });
   const modified = JSON.parse(JSON.stringify(original));
-  modified.params.arguments.path = SECRET_PATH; // tamper after signing
+  modified.params.arguments.path = SECRET_PATH; 
 
   const pr = classify(await postJson(GATEWAY_URL, modified));
   printRow("Gateway (tampered)", pr);
@@ -303,8 +285,7 @@ async function evalSessionHijacking() {
   section(4, "Session Hijacking");
   console.log("  Variant A — Bypass: call a tool with no s.init → s.ready handshake.");
   console.log("  Variant B — Forged proof: obtain a challenge then submit an invalid proof.\n");
-
-  // Baseline: no session concept — tool callable without any handshake
+  
   const direct = {
     jsonrpc: "2.0", id: "sh-1", method: "tools/call",
     params: { name: "list_allowed_directories", arguments: {} },
@@ -317,7 +298,6 @@ async function evalSessionHijacking() {
     return { n: 4, name: "Session Hijacking", bl, pr: null, gwCode: "missing_session_id" };
   }
 
-  // Protected (A): valid auth but no session_id → missing_session_id
   const bypassBody = buildSigned({
     id: "sh-2", method: "tools/call",
     params: { name: "list_allowed_directories", arguments: {} },
@@ -325,7 +305,6 @@ async function evalSessionHijacking() {
   const prBypass = classify(await postJson(GATEWAY_URL, bypassBody));
   printRow("Gateway (bypass)",   prBypass);
 
-  // Protected (B): get a real challenge but submit a forged proof
   const initResp = await postJson(GATEWAY_URL, buildSigned({
     id: `sh-3-${randNonce()}`, method: "tools/call",
     params: { name: "s.init", arguments: {} },
@@ -350,7 +329,6 @@ async function evalUnauthorizedAccess() {
   console.log("  Attacker calls read_file on the secret path.");
   console.log("  S must enforce TOOL_POLICIES: read_file is not in the allowlist.\n");
 
-  // Baseline: no ACL — read_file on secret succeeds
   const blBody = {
     jsonrpc: "2.0", id: "ua-1", method: "tools/call",
     params: { name: "read_file", arguments: { path: SECRET_PATH } },
@@ -368,7 +346,6 @@ async function evalUnauthorizedAccess() {
     return { n: 5, name: "Unauthorized Tool Access", bl, pr: null, gwCode: "tool_not_allowed" };
   }
 
-  // Protected: valid identity + valid session, but read_file is forbidden
   const sid    = await establishSession();
   const prBody = buildSigned({
     id: "ua-2", method: "tools/call",
@@ -398,8 +375,8 @@ function evalMitm() {
 //   (B) Defended: N requests through S (session pre-established, reused)
 //   (C) Session:  N_SESS × s.init + s.ready round-trip cost
 //
-// Reports: mean/p50/p95/p99 per scenario, absolute overhead, % overhead,
-//          Gateway RSS / heap / CPU delta for the load period.
+// mean/p50/p95/p99 per scenario, absolute overhead, % overhead,
+// Gateway RSS / heap / CPU delta for the load period.
 
 const PERF_N        = parseInt(process.env.EVAL_PERF_N      || "50");
 const PERF_WARMUP   = parseInt(process.env.EVAL_PERF_WARMUP || "5");
@@ -439,7 +416,6 @@ async function evalPerformance() {
   console.log(`  ${PERF_WARMUP} warmup + ${PERF_N} timed requests per scenario  |  ${PERF_N_SESS} session establishments`);
   console.log("═".repeat(100));
 
-  // ── (A) Baseline ──────────────────────────────────────────────────────────
   for (let i = 0; i < PERF_WARMUP; i++) {
     await postJson(BASELINE_URL, { jsonrpc: "2.0", id: `w${i}`, method: "tools/call",
       params: { name: "list_allowed_directories", arguments: {} } });
@@ -452,7 +428,6 @@ async function evalPerformance() {
   }
   const baseStats = stats(baseSamples);
 
-  // ── (B) Defended (session reused) ────────────────────────────────────────
   let sid;
   try { sid = await establishSession(); } catch (e) {
     console.log("  [perf] Gateway session could not be established — skipping defended scenario.");
@@ -460,7 +435,6 @@ async function evalPerformance() {
     return null;
   }
 
-  // Warmup through Gateway
   for (let i = 0; i < PERF_WARMUP; i++) {
     await postJson(GATEWAY_URL, buildSigned({ id: `gw${i}`, method: "tools/call",
       params: { name: "list_allowed_directories", arguments: {} }, session_id: sid }));
@@ -479,7 +453,6 @@ async function evalPerformance() {
   const metricsAfter = await getMetrics();
   const gwStats = stats(gwSamples);
 
-  // ── (C) Session establishment cost ───────────────────────────────────────
   const sessSamples = [];
   for (let i = 0; i < PERF_N_SESS; i++) {
     const t0 = process.hrtime.bigint();
@@ -488,7 +461,6 @@ async function evalPerformance() {
   }
   const sessStats = stats(sessSamples);
 
-  // ── Print latency table ───────────────────────────────────────────────────
   const fmt = (v) => v.toFixed(2).padStart(7);
   console.log(`\n  ${"Scenario".padEnd(32)} │  mean  │  p50   │  p95   │  p99   │   min  │   max  (ms)`);
   console.log(`  ${"─".repeat(92)}`);
@@ -496,14 +468,12 @@ async function evalPerformance() {
   console.log(`  ${"(B) Gateway (S) — session reused".padEnd(32)} │${fmt(gwStats.mean)} │${fmt(gwStats.p50)} │${fmt(gwStats.p95)} │${fmt(gwStats.p99)} │${fmt(gwStats.min)} │${fmt(gwStats.max)}`);
   console.log(`  ${"(C) Session establishment".padEnd(32)} │${fmt(sessStats.mean)} │${fmt(sessStats.p50)} │${fmt(sessStats.p95)} │${fmt(sessStats.p99)} │${fmt(sessStats.min)} │${fmt(sessStats.max)}`);
 
-  // ── Overhead summary ──────────────────────────────────────────────────────
   const overheadMs  = gwStats.mean - baseStats.mean;
   const overheadPct = (overheadMs / baseStats.mean) * 100;
   console.log(`\n  Per-request gateway overhead: +${overheadMs.toFixed(2)} ms mean  (+${overheadPct.toFixed(1)}% vs baseline)`);
   console.log(`  Session amortisation: if a session handles ≥10 requests, establishment cost`);
   console.log(`  (~${sessStats.mean.toFixed(1)} ms) adds < ${(sessStats.mean / 10).toFixed(2)} ms per request.`);
 
-  // ── Resource impact ───────────────────────────────────────────────────────
   if (metricsBefore && metricsAfter) {
     const mb = (b) => (b / 1024 / 1024).toFixed(2);
     const deltaRss  = metricsAfter.memory.rss  - metricsBefore.memory.rss;
@@ -521,7 +491,6 @@ async function evalPerformance() {
   return { baseStats, gwStats, sessStats, overheadMs, overheadPct };
 }
 
-// ── Summary table ─────────────────────────────────────────────────────────────
 function printSummary(results, perf = null) {
   console.log(`\n${"═".repeat(100)}`);
   console.log("  DEFENSE EVALUATION SUMMARY");

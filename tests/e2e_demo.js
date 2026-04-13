@@ -13,7 +13,6 @@ const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
 
-// ── Logging ───────────────────────────────────────────────────────────────────
 (function setupLog() {
   const dir = path.join(__dirname, "..", "logs");
   fs.mkdirSync(dir, { recursive: true });
@@ -25,7 +24,6 @@ const { spawn } = require("child_process");
     console[m] = (...a) => { const s = a.join(" "); orig(s); stream.write(prefix + s + "\n"); };
   }
 })();
-// ─────────────────────────────────────────────────────────────────────────────
 
 const ROOT = path.join(__dirname, "..");
 const LOG_FILE = path.join(ROOT, "malicious-mcp1", "logs", "app.log");

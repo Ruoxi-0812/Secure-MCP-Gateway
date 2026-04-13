@@ -3,8 +3,6 @@
 const fs   = require("fs");
 const path = require("path");
 
-// ── Logging setup ─────────────────────────────────────────────────────────────
-// All console output is mirrored to logs/baseline_attacks_<timestamp>.log
 const LOGS_DIR = path.join(__dirname, "..", "logs");
 fs.mkdirSync(LOGS_DIR, { recursive: true });
 const LOG_FILE = path.join(
@@ -17,13 +15,12 @@ const _log   = console.log.bind(console);
 const _error = console.error.bind(console);
 console.log   = (...args) => { const line = args.join(" "); _log(line);   logStream.write(line + "\n"); };
 console.error = (...args) => { const line = args.join(" "); _error(line); logStream.write("[ERROR] " + line + "\n"); };
-// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Baseline attack tests — no Gateway (S) deployed.
  *
- * Target: MCP2 exposed directly over HTTP via insecure_mcp2_http.js.
- * All six attacks succeed here because there are no defences without S.
+ * MCP2 exposed directly over HTTP via insecure_mcp2_http.js.
+ * All attacks succeed here because there are no defences without S.
  *
  * ┌────┬──────────────────────────┬────────────────────────────────────────┐
  * │ #  │ Attack                   │ Baseline outcome (no S)                │
@@ -36,9 +33,6 @@ console.error = (...args) => { const line = args.join(" "); _error(line); logStr
  * │ 6  │ MITM Visibility          │ Proxy reads plaintext traffic verbatim │
  * └────┴──────────────────────────┴────────────────────────────────────────┘
  *
- * Attacks 3 and 6 require the MITM proxy to be running first:
- *   node tests/baseline_mitm.js                    (visibility only)
- *   MITM_TAMPER=true node tests/baseline_mitm.js   (also tampers the path)
  */
 
 const http = require("http");
@@ -93,10 +87,6 @@ function postJson(urlStr, bodyObj) {
   });
 }
 
-// ── Attack 1: Impersonation ────────────────────────────────────────────────
-// Without S, MCP2 accepts all requests regardless of who sent them.
-// A caller can claim any identity — the auth block is forwarded but never
-// verified, so a fabricated caller_id and invalid signature are ignored.
 async function testImpersonation() {
   section(1, "Impersonation");
   console.log("  Sending request with fabricated caller_id and invalid signature.");
@@ -118,9 +108,6 @@ async function testImpersonation() {
   console.log("Expected: 200 — auth block ignored, secret returned.");
 }
 
-// ── Attack 2: Replay ───────────────────────────────────────────────────────
-// Without S, there is no nonce cache or timestamp window check.
-// The identical request can be sent any number of times and always succeeds.
 async function testReplay() {
   section(2, "Replay");
   console.log("  Sending the exact same request twice without modification.");
@@ -139,11 +126,6 @@ async function testReplay() {
   console.log("Expected: both succeed — no nonce deduplication.");
 }
 
-// ── Attack 3: Tampering ────────────────────────────────────────────────────
-// Without signature verification, an in-path proxy can freely modify any
-// field of the request before forwarding it to MCP2.
-// Here the MITM proxy rewrites the file path from the harmless file to the
-// secret file, upgrading a benign request into a sensitive one.
 async function testTampering() {
   section(3, "Tampering");
   console.log("  Sending harmless read request through MITM proxy (MITM_TAMPER=true required).");
@@ -160,10 +142,6 @@ async function testTampering() {
   console.log("Expected: response contains the secret file, not the harmless file.");
 }
 
-// ── Attack 4: No Session Enforcement ──────────────────────────────────────
-// S enforces a s.init → s.ready → tools/call state machine before
-// any tool can be invoked. Without S there is no session concept — any tool
-// can be called directly without establishing a session first.
 async function testSessionBypass() {
   section(4, "No Session Enforcement");
   console.log("  Calling list_allowed_directories with no s.init/s.ready handshake.");
@@ -179,10 +157,6 @@ async function testSessionBypass() {
   console.log("Expected: 200 — no session state machine enforced.");
 }
 
-// ── Attack 5: Unauthorized Tool Access ────────────────────────────────────
-// S enforces TOOL_POLICIES: only explicitly allowlisted tools are forwarded
-// to MCP2. Without S there is no ACL — any tool, including sensitive
-// filesystem operations like read_file, is accessible to any caller.
 async function testUnauthorizedToolAccess() {
   section(5, "Unauthorized Tool Access");
   console.log("  Calling read_file on the secret path — no ACL enforcement in baseline.");
@@ -198,10 +172,6 @@ async function testUnauthorizedToolAccess() {
   console.log("Expected: 200 — secret content returned, no capability check.");
 }
 
-// ── Attack 6: MITM Visibility ──────────────────────────────────────────────
-// Without TLS, all traffic is plaintext. A network-adjacent attacker can
-// observe both requests and responses in full — including secrets returned
-// by MCP2 — without modifying anything.
 async function testMitmVisibility() {
   section(6, "MITM Visibility");
   console.log("  Routing request through MITM proxy without tampering.");

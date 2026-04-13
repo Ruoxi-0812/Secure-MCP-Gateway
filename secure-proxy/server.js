@@ -507,12 +507,10 @@ app.post("/rpc", async (req, res) => {
   const body = req.body || {};
   const toolName = String(body?.params?.name || "");
 
-  // --- Layer 1: Method allowlist ---
   if (!ALLOWED_METHODS.has(body.method)) {
     return res.status(403).json(jsonRpcErrorObj(body.id, 403, "not_allowed_method"));
   }
 
-  // --- Layer 2: Transport security (TLS / mTLS) ---
   if (ENABLE_TLS) {
     const tlsSocket = req.socket;
     if (!tlsSocket?.encrypted) {
@@ -523,14 +521,12 @@ app.post("/rpc", async (req, res) => {
     }
   }
 
-  // --- Layer 3: Cryptographic identity (caller_id + signature + timestamp + nonce) ---
   const authResult = verifyAuth(body);
   if (!authResult.ok) {
     return res.status(403).json(jsonRpcErrorObj(body.id, 403, authResult.reason));
   }
   const callerId = authResult.callerId;
 
-  // --- Layer 4: mTLS identity binding (TLS cert CN must match caller_id) ---
   if (ENABLE_MTLS) {
     const cert = req.socket.getPeerCertificate?.();
     const certCn = cert?.subject?.CN;
@@ -542,7 +538,6 @@ app.post("/rpc", async (req, res) => {
     }
   }
 
-  // --- Layer 5: Session state + capability ACL ---
   if (body.method === "tools/list") {
     try {
       const resp = await forwardToMcp2(body);

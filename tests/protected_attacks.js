@@ -3,9 +3,6 @@
 /**
  * Protected attack tests — Gateway (S) deployed.
  *
- * Each test sends the same attack that succeeds in the baseline and verifies
- * that S detects and blocks it before it reaches MCP2.
- *
  * ┌────┬──────────────────────────┬─────────────────────┬──────────────────────────────────────┐
  * │ #  │ Attack                   │ Test case(s)        │ S response                           │
  * ├────┼──────────────────────────┼─────────────────────┼──────────────────────────────────────┤
@@ -42,15 +39,6 @@
  * │ 6  │ MITM                     │ (mitm_protected)     │ TLS blocks interception entirely     │
  * └────┴──────────────────────────┴─────────────────────┴──────────────────────────────────────┘
  *
- * Usage:  node tests/protected_attacks.js <test>
- * Tests:  unknowncaller | noauth | missing_caller_id | missing_timestamp |
- *         missing_nonce | missing_signature |
- *         replay | oldts | futurets |
- *         badsig | tamper_method | tamper_auth |
- *         bypass | session_mismatch | badready | readytimeout | quota |
- *         unknown_session | double_ready | not_ready_session |
- *         acldeny | listfilter | write_file_denied | allowed_tool |
- *         unknown_method | demo
  */
 
 const crypto = require("crypto");
@@ -59,7 +47,6 @@ const path = require("path");
 const http = require("http");
 const https = require("https");
 
-// ── Logging ───────────────────────────────────────────────────────────────────
 (function setupLog() {
   const dir = path.join(__dirname, "..", "logs");
   fs.mkdirSync(dir, { recursive: true });
@@ -71,7 +58,6 @@ const https = require("https");
     console[m] = (...a) => { const s = a.join(" "); orig(s); stream.write(prefix + s + "\n"); };
   }
 })();
-// ─────────────────────────────────────────────────────────────────────────────
 
 const S_URL = process.env.S_URL || "http://127.0.0.1:4000/rpc";
 const CALLER_ID = process.env.CALLER_ID || "mcp1";
@@ -432,11 +418,6 @@ async function session_mismatch() {
   console.log(r.status, r.json || r.raw);
 }
 
-// ── Attack 1 extensions: individual auth-field omission ───────────────────────
-// Each test removes exactly one required auth field. S returns a distinct error
-// code for each missing field, proving that all fields are validated before the
-// signature step.
-
 async function missingCallerId() {
   const body = jsonRpc("1", "tools/list", {}, makeAuth());
   delete body.auth.caller_id;
@@ -462,17 +443,11 @@ async function missingNonce() {
 }
 
 async function missingSignature() {
-  // makeAuth() sets signature:"" (falsy) — send without calling signBody
   const body = jsonRpc("1", "tools/list", {}, makeAuth());
   const r = await postJson(S_URL, body);
   console.log(r.status, r.json || r.raw);
   console.log("Expected: 403 missing_signature");
 }
-
-// ── Attack 2 extension: future timestamp ──────────────────────────────────────
-// The timestamp window rejects requests more than AUTH_TS_WINDOW_SEC seconds
-// away from now in either direction. A future timestamp (+10 min) is caught by
-// the same abs() window check as an old timestamp.
 
 async function futureTs() {
   const r = await callToolsList("1", { timestamp: nowSec(+600) });
@@ -480,15 +455,10 @@ async function futureTs() {
   console.log("Expected: 403 timestamp_out_of_window");
 }
 
-// ── Attack 3 extensions: post-signing field tampering ─────────────────────────
-// The RSA-SHA256 signature is computed over the full canonical body. Changing
-// any field — including the RPC method or auth sub-fields — after signing
-// invalidates the signature. Both tests confirm bad_signature is returned.
-
 async function tamperMethod() {
   const body = jsonRpc("1", "tools/list", {}, makeAuth());
   signBody(body);
-  body.method = "tools/call"; // rewrite method after signing
+  body.method = "tools/call"; 
   const r = await postJson(S_URL, body);
   console.log(r.status, r.json || r.raw);
   console.log("Expected: 403 bad_signature — method field is part of signed payload");
@@ -497,15 +467,12 @@ async function tamperMethod() {
 async function tamperAuth() {
   const body = jsonRpc("1", "tools/list", {}, makeAuth());
   signBody(body);
-  body.auth.nonce = "tampered-nonce"; // mutate auth nonce after signing
+  body.auth.nonce = "tampered-nonce"; 
   const r = await postJson(S_URL, body);
   console.log(r.status, r.json || r.raw);
   console.log("Expected: 403 bad_signature — auth fields are included in signed payload");
 }
 
-// ── Attack 4 extensions: session state machine boundaries ─────────────────────
-
-// Sending a random session_id that was never created → unknown_session
 async function unknownSession() {
   const r = await callTool("list_allowed_directories", {}, {
     id: "1",
@@ -515,9 +482,6 @@ async function unknownSession() {
   console.log("Expected: 403 unknown_session");
 }
 
-// Calling s.ready a second time on an already-ready session → bad_session_state
-// (verifyReadyTransition requires state === 'new'; after the first s.ready the
-// session moves to 'ready', so the second call is rejected)
 async function doubleReady() {
   await callInitialize("0");
   await callInitialized();
@@ -537,8 +501,6 @@ async function doubleReady() {
   console.log("Expected: first → 200, second → 403 bad_session_state");
 }
 
-// Calling a tool after s.init but before s.ready → bad_session_state
-// (verifyToolCall requires state === 'ready'; 'new' state is not sufficient)
 async function notReadySession() {
   await callInitialize("0");
   await callInitialized();
@@ -547,15 +509,11 @@ async function notReadySession() {
   const sid = initResp.json?.result?.session_id;
   if (!sid) die("s.init failed");
 
-  // skip s.ready, jump straight to a tool call
   const r = await callTool("list_allowed_directories", {}, { id: "2", session_id: sid });
   console.log(r.status, r.json || r.raw);
   console.log("Expected: 403 bad_session_state — session is new, not ready");
 }
 
-// ── Attack 5 extensions: ACL boundary tests ───────────────────────────────────
-
-// write_file is not in TOOL_POLICIES → tool_not_allowed (same layer as read_file)
 async function writeFileDenied() {
   await callInitialize("0");
   await callInitialized();
@@ -569,8 +527,6 @@ async function writeFileDenied() {
   console.log("Expected: 403 tool_not_allowed");
 }
 
-// Positive control: list_allowed_directories IS whitelisted → must succeed
-// Confirms the ACL allows legitimate callers through, not just blocks attackers
 async function allowedTool() {
   await callInitialize("0");
   await callInitialized();
@@ -580,8 +536,6 @@ async function allowedTool() {
   console.log("Expected: 200 — list_allowed_directories is whitelisted");
 }
 
-// Layer 1 — method allowlist: an unknown RPC method is rejected before any auth
-// or session check runs, demonstrating the outermost defense layer
 async function unknownMethod() {
   const body = { jsonrpc: "2.0", id: "1", method: "admin/deleteAll", params: {}, auth: makeAuth() };
   signBody(body);
@@ -591,7 +545,7 @@ async function unknownMethod() {
 }
 
 async function runAll() {
-  const SLOW = process.env.SKIP_SLOW !== "false"; // slow tests skipped unless SKIP_SLOW=false
+  const SLOW = process.env.SKIP_SLOW !== "false"; 
   const results = [];
 
   async function run(name, fn, { skip = false, slow = false } = {}) {
@@ -617,7 +571,6 @@ async function runAll() {
     }
   }
 
-  // ── Attack 1: Impersonation ────────────────────────────────────────────────
   await run("unknowncaller",     unknowncaller);
   await run("noauth",            noauth);
   await run("missing_caller_id", missingCallerId);
@@ -625,17 +578,14 @@ async function runAll() {
   await run("missing_nonce",     missingNonce);
   await run("missing_signature", missingSignature);
 
-  // ── Attack 2: Replay ──────────────────────────────────────────────────────
   await run("replay",   replay);
   await run("oldts",    oldts);
   await run("futurets", futureTs);
 
-  // ── Attack 3: Tampering ───────────────────────────────────────────────────
   await run("badsig",        badsig);
   await run("tamper_method", tamperMethod);
   await run("tamper_auth",   tamperAuth);
 
-  // ── Attack 4: Session Hijacking ───────────────────────────────────────────
   await run("bypass",            bypass);
   await run("session_mismatch",  session_mismatch, { skip: !HIJACK_PRIVATE_KEY });
   await run("badready",          badready);
@@ -645,14 +595,12 @@ async function runAll() {
   await run("double_ready",      doubleReady);
   await run("not_ready_session", notReadySession);
 
-  // ── Attack 5: Unauthorized Tool Access ────────────────────────────────────
   await run("acldeny",           acldeny);
   await run("listfilter",        listfilter);
   await run("write_file_denied", writeFileDenied);
   await run("allowed_tool",      allowedTool);
   await run("unknown_method",    unknownMethod);
 
-  // ── Summary ───────────────────────────────────────────────────────────────
   const ran     = results.filter((r) => r.verdict === "ran").length;
   const errored = results.filter((r) => r.verdict === "error").length;
   const skipped = results.filter((r) => r.verdict.startsWith("skipped")).length;
@@ -682,62 +630,35 @@ async function main() {
     case "all":  return runAll();
     case "demo": return demo();
 
-    // ── Attack 1: Impersonation ──────────────────────────────────────────
-    // S looks up the public key for the claimed caller_id and verifies the
-    // RSA-SHA256 signature over the full request body. A missing auth block,
-    // an unregistered caller_id, or any absent auth field is rejected first.
-    case "unknowncaller":      return unknowncaller();      // unregistered caller_id          → 403 unknown_caller
-    case "noauth":             return noauth();             // auth block absent entirely       → 403 missing_auth
-    case "missing_caller_id":  return missingCallerId();    // caller_id field missing          → 403 missing_caller_id
-    case "missing_timestamp":  return missingTimestamp();   // timestamp field missing          → 403 missing_timestamp
-    case "missing_nonce":      return missingNonce();       // nonce field missing              → 403 missing_nonce
-    case "missing_signature":  return missingSignature();   // signature field empty            → 403 missing_signature
+    case "unknowncaller":      return unknowncaller();     
+    case "noauth":             return noauth();             
+    case "missing_caller_id":  return missingCallerId();    
+    case "missing_timestamp":  return missingTimestamp();   
+    case "missing_nonce":      return missingNonce();       
+    case "missing_signature":  return missingSignature();   
 
-    // ── Attack 2: Replay ─────────────────────────────────────────────────
-    // Every request must carry a fresh timestamp (within AUTH_TS_WINDOW_SEC)
-    // and a nonce that has not been seen before (tracked in nonceCache).
-    // The timestamp window applies in both directions — past AND future.
-    case "replay":   return replay();    // identical nonce reused          → 403 replay_nonce_reused
-    case "oldts":    return oldts();     // timestamp too far in past        → 403 timestamp_out_of_window
-    case "futurets": return futureTs();  // timestamp too far in future      → 403 timestamp_out_of_window
+    case "replay":   return replay();    
+    case "oldts":    return oldts();    
+    case "futurets": return futureTs();  
 
-    // ── Attack 3: Tampering ──────────────────────────────────────────────
-    // The signature covers the entire canonical request body. Any field
-    // modified after signing — including the RPC method or auth sub-fields —
-    // causes signature verification to fail.
-    case "badsig":        return badsig();        // params changed post-signing      → 403 bad_signature
-    case "tamper_method": return tamperMethod();  // method rewritten after signing   → 403 bad_signature
-    case "tamper_auth":   return tamperAuth();    // auth nonce mutated after signing → 403 bad_signature
+    case "badsig":        return badsig();        
+    case "tamper_method": return tamperMethod();  
+    case "tamper_auth":   return tamperAuth();   
 
-    // ── Attack 4: Session Hijacking ──────────────────────────────────────
-    // S enforces a strict s.init → s.ready → tools/call state machine.
-    // Sessions are cryptographically bound to the caller that created them;
-    // cross-caller reuse, forged proofs, expired windows, and state skips
-    // are all rejected.
-    case "bypass":             return bypass();            // skip handshake entirely         → 403 missing_session_id
-    case "session_mismatch":   return session_mismatch();  // reuse session as diff caller    → 403 session_caller_mismatch
-    case "badready":           return badready();          // forge challenge-response        → 403 bad_ready_proof
-    case "readytimeout":       return readytimeout();      // miss the ready window           → 403 ready_timeout
-    case "quota":              return quota();             // exceed per-session op limit     → 403 session_ops_exhausted
-    case "unknown_session":    return unknownSession();    // random session_id never created → 403 unknown_session
-    case "double_ready":       return doubleReady();       // s.ready called twice            → 403 bad_session_state
-    case "not_ready_session":  return notReadySession();   // tool call before s.ready done   → 403 bad_session_state
+    case "bypass":             return bypass();            
+    case "session_mismatch":   return session_mismatch();  
+    case "badready":           return badready();          
+    case "readytimeout":       return readytimeout();      
+    case "quota":              return quota();             
+    case "unknown_session":    return unknownSession();    
+    case "double_ready":       return doubleReady();      
+    case "not_ready_session":  return notReadySession();   
 
-    // ── Attack 5: Unauthorized Tool Access ───────────────────────────────
-    // Even with valid identity and a ready session, only tools listed in
-    // TOOL_POLICIES with safe:true are forwarded. All others are blocked.
-    // tools/list also filters the response so forbidden tools are not visible.
-    // allowed_tool is a positive control confirming legitimate access works.
-    case "acldeny":          return acldeny();          // read_file with valid session     → 403 tool_not_allowed
-    case "listfilter":       return listfilter();       // tools/list hides non-safe tools  → 200 filtered list
-    case "write_file_denied": return writeFileDenied(); // write_file blocked by ACL        → 403 tool_not_allowed
-    case "allowed_tool":     return allowedTool();      // list_allowed_directories OK      → 200
-    case "unknown_method":   return unknownMethod();    // unknown RPC method (Layer 1)     → 403 not_allowed_method
-
-    // ── Attack 6: MITM ───────────────────────────────────────────────────
-    // Covered by mitm_protected.js. TLS encrypts the channel so a proxy
-    // cannot read or modify traffic; mTLS additionally authenticates the
-    // client, preventing connection from an unknown party.
+    case "acldeny":          return acldeny();          
+    case "listfilter":       return listfilter();       
+    case "write_file_denied": return writeFileDenied(); 
+    case "allowed_tool":     return allowedTool();      
+    case "unknown_method":   return unknownMethod();    
 
     default:
       die("Unknown command: " + cmd);

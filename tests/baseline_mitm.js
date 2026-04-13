@@ -10,7 +10,6 @@ const http = require("http");
 const fs   = require("fs");
 const path = require("path");
 
-// ── Logging ───────────────────────────────────────────────────────────────────
 (function setupLog() {
   const dir = path.join(__dirname, "..", "logs");
   fs.mkdirSync(dir, { recursive: true });
@@ -22,7 +21,6 @@ const path = require("path");
     console[m] = (...a) => { const s = a.join(" "); orig(s); stream.write(prefix + s + "\n"); };
   }
 })();
-// ─────────────────────────────────────────────────────────────────────────────
 
 const LISTEN_PORT = Number(process.env.MITM_PORT || 4444);
 const TARGET_HOST = process.env.TARGET_HOST || "127.0.0.1";

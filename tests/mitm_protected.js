@@ -13,7 +13,6 @@ const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
 
-// ── Logging ───────────────────────────────────────────────────────────────────
 (function setupLog() {
   const dir = path.join(__dirname, "..", "logs");
   fs.mkdirSync(dir, { recursive: true });
@@ -25,7 +24,6 @@ const { execFile } = require("child_process");
     console[m] = (...a) => { const s = a.join(" "); orig(s); stream.write(prefix + s + "\n"); };
   }
 })();
-// ─────────────────────────────────────────────────────────────────────────────
 
 const PORT = Number(process.env.MITM_TLS_PORT || 4445);
 const CERT_PATH = process.env.MITM_CERT_PATH || path.join(__dirname, "..", "secure-proxy", "certs", "mitm.crt");

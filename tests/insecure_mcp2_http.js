@@ -3,7 +3,7 @@
 /**
  * Insecure baseline wrapper around MCP2.
  *
- * - expose MCP2 over plain HTTP with no auth, no nonce, no session, no TLS
+ * - expose MCP2 over HTTP with no auth, no nonce, no session, no TLS
  * - make baseline attacks observable before adding S
  */
 
