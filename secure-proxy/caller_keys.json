@@ -1,0 +1,4 @@
+{
+  "mcp1": "./certs/mcp1_public.pem",
+  "mcp2": "./certs/mcp2_public.pem"
+}

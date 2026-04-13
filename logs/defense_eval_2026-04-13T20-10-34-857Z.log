@@ -1,0 +1,115 @@
+╔════════════════════════════════════════════════════╗
+║   Secure MCP Gateway — Defense Evaluation          ║
+║   6 attacks × baseline (no S) + protected (S)     ║
+╚════════════════════════════════════════════════════╝
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attack 1: Impersonation
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attacker claims caller_id='fake-admin' with a fabricated signature.
+  S must reject any caller_id not in caller_keys.json.
+
+  Baseline (no S)        │ HTTP 200 │ 200 OK                           │ MCP2: YES — reached MCP2 │ ✗ VULNERABLE
+  Gateway (S)            │ HTTP 403 │ unknown_caller                   │ MCP2: NO  — blocked at S │ ✓ BLOCKED   
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attack 2: Replay
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attacker captures a legitimately signed request and resends it verbatim.
+  S must reject any request whose nonce has already been seen.
+
+  Baseline 1st send      │ HTTP 200 │ 200 OK                           │ MCP2: YES — reached MCP2 │ ✗ VULNERABLE
+  Baseline replay        │ HTTP 200 │ 200 OK                           │ MCP2: YES — reached MCP2 │ ✗ VULNERABLE
+  Gateway 1st send       │ HTTP 200 │ 200 OK                           │ MCP2: YES — reached MCP2 │ ✗ VULNERABLE
+  Gateway replay         │ HTTP 403 │ replay_nonce_reused              │ MCP2: NO  — blocked at S │ ✓ BLOCKED   
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attack 3: Tampering
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attacker intercepts a signed request for the harmless file and
+  rewrites the path argument to point at the secret file.
+  S must detect the modification via signature verification.
+
+  Baseline (tampered)    │ HTTP 200 │ 200 OK                           │ MCP2: YES — reached MCP2 │ ✗ VULNERABLE
+  Gateway (tampered)     │ HTTP 403 │ bad_signature                    │ MCP2: NO  — blocked at S │ ✓ BLOCKED   
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attack 4: Session Hijacking
+══════════════════════════════════════════════════════════════════════════════════════════
+  Variant A — Bypass: call a tool with no s.init → s.ready handshake.
+  Variant B — Forged proof: obtain a challenge then submit an invalid proof.
+
+  Baseline (bypass)      │ HTTP 200 │ 200 OK                           │ MCP2: YES — reached MCP2 │ ✗ VULNERABLE
+  Gateway (bypass)       │ HTTP 403 │ missing_session_id               │ MCP2: NO  — blocked at S │ ✓ BLOCKED   
+  Gateway (forged proof) │ HTTP 403 │ bad_ready_proof                  │ MCP2: NO  — blocked at S │ ✓ BLOCKED   
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attack 5: Unauthorized Tool Access
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attacker calls read_file on the secret path.
+  S must enforce TOOL_POLICIES: read_file is not in the allowlist.
+
+  Baseline file content: "API_TOKEN=sk-demo-7f3a9c2e"
+  Baseline (no ACL)      │ HTTP 200 │ 200 OK                           │ MCP2: YES — reached MCP2 │ ✗ VULNERABLE
+  Gateway (ACL enforced) │ HTTP 403 │ tool_not_allowed                 │ MCP2: NO  — blocked at S │ ✓ BLOCKED   
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attack 6: MITM (Man-in-the-Middle)
+══════════════════════════════════════════════════════════════════════════════════════════
+  Attacker runs a relay that intercepts HTTP traffic between MCP1 and MCP2.
+  Without TLS, the relay has full read/write access to all messages.
+  S with ENABLE_TLS=true encrypts the channel end-to-end.
+  Full live demo: node tests/baseline_mitm.js + node tests/mitm_protected.js
+
+  Baseline (HTTP)    │ HTTP 200 │ Proxy reads & rewrites plaintext   │ MCP2: YES — via proxy │ ✗ VULNERABLE
+  Gateway (TLS)      │  —       │ TLS rejects connection from proxy  │ MCP2: NO              │ ✓ BLOCKED   
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  PERFORMANCE EVALUATION
+  5 warmup + 200 timed requests per scenario  |  30 session establishments
+════════════════════════════════════════════════════════════════════════════════════════════════════
+
+  Scenario                         │  mean  │  p50   │  p95   │  p99   │   min  │   max  (ms)
+  ────────────────────────────────────────────────────────────────────────────────────────────
+  (A) Baseline (no S)              │   1.01 │   0.98 │   1.49 │   1.79 │   0.56 │   1.88
+  (B) Gateway (S) — session reused │   1.30 │   1.24 │   1.91 │   2.43 │   0.65 │   3.15
+  (C) Session establishment        │   3.73 │   3.76 │   4.35 │   5.50 │   2.80 │   5.50
+
+  Per-request gateway overhead: +0.30 ms mean  (+29.3% vs baseline)
+  Session amortisation: if a session handles ≥10 requests, establishment cost
+  (~3.7 ms) adds < 0.37 ms per request.
+
+  Gateway resource usage during 200 defended requests:
+    RSS memory  : 58.27 MB → 62.20 MB  (Δ 3.93 MB)
+    Heap used   : 10.80 MB → 12.30 MB  (Δ 1.51 MB)
+    CPU user    : +172.0 ms   CPU system: +109.0 ms
+
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  DEFENSE EVALUATION SUMMARY
+════════════════════════════════════════════════════════════════════════════════════════════════════
+  #   Attack                       Baseline       Gateway (S)                            MCP2 reached?
+  ──────────────────────────────────────────────────────────────────────────────────────────
+  1   Impersonation                ✗ VULNERABLE   ✓ BLOCKED (unknown_caller)             No
+  2   Replay                       ✗ VULNERABLE   ✓ BLOCKED (replay_nonce_reused)        No
+  3   Tampering                    ✗ VULNERABLE   ✓ BLOCKED (bad_signature)              No
+  4   Session Hijacking            ✗ VULNERABLE   ✓ BLOCKED (missing_session_id)         No
+  5   Unauthorized Tool Access     ✗ VULNERABLE   ✓ BLOCKED (tool_not_allowed)           No
+  6   MITM                         ✗ VULNERABLE   ✓ BLOCKED (TLS encryption)             No
+
+  ──────────────────────────────────────────────────────────────────────────────────────────
+  Result: 6/6 attacks BLOCKED — S prevents all attacks from reaching MCP2.
+
+  Defense layers and what they block:
+    Layer 1 — Method allowlist      blocks: unknown-method abuse
+    Layer 2 — TLS / mTLS            blocks: MITM, eavesdropping
+    Layer 3 — Cryptographic auth    blocks: impersonation, tampering, replay
+    Layer 4 — mTLS CN binding       blocks: cert/identity mismatch
+    Layer 5 — Session + ACL         blocks: session hijacking, unauthorized access
+
+  Performance overhead (200 requests each):
+    Baseline mean latency : 1.01 ms
+    Gateway mean latency  : 1.30 ms
+    Absolute overhead     : +0.30 ms per request
+    Relative overhead     : +29.3%
+    Session setup cost    : 3.7 ms (amortised over N calls)
+════════════════════════════════════════════════════════════════════════════════════════════════════

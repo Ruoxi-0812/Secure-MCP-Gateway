@@ -1,0 +1,91 @@
+╔════════════════════════════════════════════════════╗
+║   Secure MCP Gateway — Baseline Attacks            ║
+║   6 attacks against unprotected MCP2 (no S)       ║
+╚════════════════════════════════════════════════════╝
+
+════════════════════════════════════════════════════════════
+  Attack 1: Impersonation
+════════════════════════════════════════════════════════════
+  Sending request with fabricated caller_id and invalid signature.
+Result: 200 {
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "API_TOKEN=sk-demo-7f3a9c2e"
+      }
+    ],
+    "structuredContent": {
+      "content": "API_TOKEN=sk-demo-7f3a9c2e"
+    }
+  },
+  "jsonrpc": "2.0",
+  "id": "imp-1"
+}
+Expected: 200 — auth block ignored, secret returned.
+
+════════════════════════════════════════════════════════════
+  Attack 2: Replay
+════════════════════════════════════════════════════════════
+  Sending the exact same request twice without modification.
+First : 200 [object Object]
+Replay: 200 [object Object]
+Expected: both succeed — no nonce deduplication.
+
+════════════════════════════════════════════════════════════
+  Attack 3: Tampering
+════════════════════════════════════════════════════════════
+  Sending harmless read request through MITM proxy (MITM_TAMPER=true required).
+  The proxy silently rewrites the file path to point at the secret.
+Result: 200 {
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "hello baseline"
+      }
+    ],
+    "structuredContent": {
+      "content": "hello baseline"
+    }
+  },
+  "jsonrpc": "2.0",
+  "id": "tamper-1"
+}
+Expected: response contains the secret file, not the harmless file.
+
+════════════════════════════════════════════════════════════
+  Attack 4: No Session Enforcement
+════════════════════════════════════════════════════════════
+  Calling list_allowed_directories with no s.init/s.ready handshake.
+Result: 200 [object Object]
+Expected: 200 — no session state machine enforced.
+
+════════════════════════════════════════════════════════════
+  Attack 5: Unauthorized Tool Access
+════════════════════════════════════════════════════════════
+  Calling read_file on the secret path — no ACL enforcement in baseline.
+Result: 200 {
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "API_TOKEN=sk-demo-7f3a9c2e"
+      }
+    ],
+    "structuredContent": {
+      "content": "API_TOKEN=sk-demo-7f3a9c2e"
+    }
+  },
+  "jsonrpc": "2.0",
+  "id": "acl-1"
+}
+Expected: 200 — secret content returned, no capability check.
+
+════════════════════════════════════════════════════════════
+  Attack 6: MITM Visibility
+════════════════════════════════════════════════════════════
+  Routing request through MITM proxy without tampering.
+  Check proxy console output — full plaintext request and response are logged.
+Result: 200 [object Object]
+Expected: 200 — proxy intercepted and logged the full exchange.

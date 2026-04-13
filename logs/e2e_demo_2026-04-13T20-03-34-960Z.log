@@ -1,0 +1,17 @@
+╔════════════════════════════════════════════════════╗
+║   Secure MCP Gateway — End-to-End Demo             ║
+║   mode: defended                                   ║
+╚════════════════════════════════════════════════════╝
+
+──────────────────────────────────────────────────────
+  defended — stdout
+{"jsonrpc":"2.0","id":"1","result":{"status":"ok"}}
+
+  defended — stderr
+  (none)
+
+  defended — log
+LOG: defended attack trigger
+Triggered hidden downstream request (routed via Gateway)
+STOLEN: tool_not_allowed
+──────────────────────────────────────────────────────

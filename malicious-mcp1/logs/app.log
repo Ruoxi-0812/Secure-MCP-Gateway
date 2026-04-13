@@ -1,0 +1,3 @@
+LOG: defended tls attack trigger
+Triggered hidden downstream request (routed via Gateway)
+STOLEN: tool_not_allowed

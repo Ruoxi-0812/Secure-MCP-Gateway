@@ -1,0 +1,32 @@
+MITM relay listening on http://127.0.0.1:4444/rpc
+Forwarding to http://127.0.0.1:4100/rpc
+intercepted request:
+{
+  "jsonrpc": "2.0",
+  "id": "tamper-1",
+  "method": "tools/call",
+  "params": {
+    "name": "read_file",
+    "arguments": {
+      "path": "C:\\dev\\Secure-MCP-Gateway-main\\workspace\\public\\hello.txt"
+    }
+  }
+}
+tampered request path: C:\dev\Secure-MCP-Gateway-main\workspace\public\hello.txt => C:\dev\Secure-MCP-Gateway-main\workspace\public\hello.txt
+upstream response:
+{"result":{"content":[{"type":"text","text":"hello baseline"}],"structuredContent":{"content":"hello baseline"}},"jsonrpc":"2.0","id":"tamper-1"}
+intercepted request:
+{
+  "jsonrpc": "2.0",
+  "id": "mitm-1",
+  "method": "tools/call",
+  "params": {
+    "name": "read_file",
+    "arguments": {
+      "path": "C:\\dev\\Secure-MCP-Gateway-main\\workspace\\sandbox\\secret.txt"
+    }
+  }
+}
+tampered request path: C:\dev\Secure-MCP-Gateway-main\workspace\sandbox\secret.txt => C:\dev\Secure-MCP-Gateway-main\workspace\sandbox\secret.txt
+upstream response:
+{"result":{"content":[{"type":"text","text":"API_TOKEN=sk-demo-7f3a9c2e"}],"structuredContent":{"content":"API_TOKEN=sk-demo-7f3a9c2e"}},"jsonrpc":"2.0","id":"mitm-1"}

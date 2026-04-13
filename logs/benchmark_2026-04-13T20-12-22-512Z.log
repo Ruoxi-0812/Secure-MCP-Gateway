@@ -1,0 +1,25 @@
+╔════════════════════════════════════════════════════╗
+║   Secure MCP Gateway — Benchmark                   ║
+║   requests: 100   warmup: 10   sessions: 20        ║
+╚════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│            Secure MCP Gateway — Performance Benchmark Results (ms)        │
+├──────────────────────────┬───────┬───────┬───────┬───────┬───────┬────────┤
+│ Scenario                 │  mean │   min │   max │   p50 │   p95 │    p99 │
+├──────────────────────────┼───────┼───────┼───────┼───────┼───────┼────────┤
+│ baseline                 │ 1.045 │ 0.626 │ 2.826 │ 0.987 │ 1.507 │  2.826 │
+│ defended                 │ 2.184 │ 1.319 │ 3.389 │ 2.213 │ 3.136 │  3.389 │
+│ session_establishment    │ 3.921 │ 2.880 │ 4.665 │ 3.995 │ 4.665 │  4.665 │
+└──────────────────────────┴───────┴───────┴───────┴───────┴───────┴────────┘
+
+  Gateway overhead: +1.139 ms mean (+109.0% relative to baseline)
+
+  Gateway resource usage (during benchmark load):
+    RSS memory  : 57.61 MB → 62.26 MB  (Δ 4.66 MB)
+    Heap used   : 9.73 MB → 10.31 MB  (Δ 0.58 MB)
+    CPU user    : 78.0 ms
+    CPU system  : 78.0 ms
+
+  Raw data → C:\dev\Secure-MCP-Gateway-main\benchmark_results.csv
+  Plot with: pandas / matplotlib / Excel / R

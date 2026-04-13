@@ -1,0 +1,231 @@
+╔════════════════════════════════════════════════════╗
+║   Secure MCP Gateway — Protected Attack Tests      ║
+║   test: all                                        ║
+╚════════════════════════════════════════════════════╝
+
+────────────────────────────────────────────────────────────
+  [ unknowncaller ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ noauth ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ missing_caller_id ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+Expected: 403 missing_caller_id
+
+────────────────────────────────────────────────────────────
+  [ missing_timestamp ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+Expected: 403 missing_timestamp
+
+────────────────────────────────────────────────────────────
+  [ missing_nonce ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+Expected: 403 missing_nonce
+
+────────────────────────────────────────────────────────────
+  [ missing_signature ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+Expected: 403 missing_signature
+
+────────────────────────────────────────────────────────────
+  [ replay ]
+────────────────────────────────────────────────────────────
+first: 200 [object Object]
+replay: 403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ oldts ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ futurets ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+Expected: 403 timestamp_out_of_window
+
+────────────────────────────────────────────────────────────
+  [ badsig ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ tamper_method ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+Expected: 403 bad_signature — method field is part of signed payload
+
+────────────────────────────────────────────────────────────
+  [ tamper_auth ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+Expected: 403 bad_signature — auth fields are included in signed payload
+
+────────────────────────────────────────────────────────────
+  [ bypass ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ session_mismatch ]
+────────────────────────────────────────────────────────────
+ready as mcp1: 200 [object Object]
+403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ badready ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ readytimeout ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ quota ]
+────────────────────────────────────────────────────────────
+init: 200 [object Object]
+ready: 200 [object Object]
+call 1: 200 [object Object]
+call 2: 200 [object Object]
+call 3: 200 [object Object]
+call 4: 200 [object Object]
+call 5: 200 [object Object]
+call 6: 200 [object Object]
+call 7: 200 [object Object]
+call 8: 200 [object Object]
+call 9: 200 [object Object]
+call 10: 200 [object Object]
+call 11: 403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ unknown_session ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+Expected: 403 unknown_session
+
+────────────────────────────────────────────────────────────
+  [ double_ready ]
+────────────────────────────────────────────────────────────
+first ready: 200 [object Object]
+second ready: 403 [object Object]
+Expected: first → 200, second → 403 bad_session_state
+
+────────────────────────────────────────────────────────────
+  [ not_ready_session ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+Expected: 403 bad_session_state — session is new, not ready
+
+────────────────────────────────────────────────────────────
+  [ acldeny ]
+────────────────────────────────────────────────────────────
+init: 200 [object Object]
+ready: 200 [object Object]
+403 [object Object]
+
+────────────────────────────────────────────────────────────
+  [ listfilter ]
+────────────────────────────────────────────────────────────
+200 {
+  "result": {
+    "tools": [
+      {
+        "name": "list_allowed_directories",
+        "title": "List Allowed Directories",
+        "description": "Returns the list of directories that this server is allowed to access. Subdirectories within these allowed directories are also accessible. Use this to understand which directories and their nested paths are available before trying to access files.",
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "annotations": {
+          "readOnlyHint": true
+        },
+        "execution": {
+          "taskSupport": "forbidden"
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "content"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    ]
+  },
+  "jsonrpc": "2.0",
+  "id": "1"
+}
+
+────────────────────────────────────────────────────────────
+  [ write_file_denied ]
+────────────────────────────────────────────────────────────
+init: 200 [object Object]
+ready: 200 [object Object]
+403 [object Object]
+Expected: 403 tool_not_allowed
+
+────────────────────────────────────────────────────────────
+  [ allowed_tool ]
+────────────────────────────────────────────────────────────
+init: 200 [object Object]
+ready: 200 [object Object]
+200 [object Object]
+Expected: 200 — list_allowed_directories is whitelisted
+
+────────────────────────────────────────────────────────────
+  [ unknown_method ]
+────────────────────────────────────────────────────────────
+403 [object Object]
+Expected: 403 not_allowed_method
+
+════════════════════════════════════════════════════════════
+  ALL-TESTS SUMMARY
+════════════════════════════════════════════════════════════
+  ✓  unknowncaller              ran
+  ✓  noauth                     ran
+  ✓  missing_caller_id          ran
+  ✓  missing_timestamp          ran
+  ✓  missing_nonce              ran
+  ✓  missing_signature          ran
+  ✓  replay                     ran
+  ✓  oldts                      ran
+  ✓  futurets                   ran
+  ✓  badsig                     ran
+  ✓  tamper_method              ran
+  ✓  tamper_auth                ran
+  ✓  bypass                     ran
+  ✓  session_mismatch           ran
+  ✓  badready                   ran
+  ✓  readytimeout               ran
+  ✓  quota                      ran
+  ✓  unknown_session            ran
+  ✓  double_ready               ran
+  ✓  not_ready_session          ran
+  ✓  acldeny                    ran
+  ✓  listfilter                 ran
+  ✓  write_file_denied          ran
+  ✓  allowed_tool               ran
+  ✓  unknown_method             ran
+────────────────────────────────────────────────────────────
+  25 ran   0 skipped   0 errors
+════════════════════════════════════════════════════════════

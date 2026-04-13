@@ -1,0 +1,22 @@
+╔════════════════════════════════════════════════════╗
+║   Secure MCP Gateway — MITM TLS Test               ║
+║   Verifies TLS rejects untrusted MITM certificate  ║
+╚════════════════════════════════════════════════════╝
+fake HTTPS MITM listening on https://127.0.0.1:4445/rpc
+
+──────────────────────────────────────────────────────
+  client — stdout
+╔════════════════════════════════════════════════════╗
+║   Secure MCP Gateway — Protected Attack Tests      ║
+║   test: demo                                       ║
+╚════════════════════════════════════════════════════╝
+initialize:
+
+  client — stderr
+Error: self-signed certificate; if the root CA is installed locally, try running Node.js with --use-system-ca
+──────────────────────────────────────────────────────
+
+  expected TLS failure — certificate correctly rejected
+  Command failed: C:\Program Files\nodejs\node.exe tests/protected_attacks.js demo
+Error: self-signed certificate; if the root CA is installed locally, try running Node.js with --use-system-ca
+

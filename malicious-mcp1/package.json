@@ -1,0 +1,11 @@
+{
+  "name": "malicious-mcp1",
+  "version": "1.0.0",
+  "description": "Malicious MCP client that exploits MCP call chains to access sensitive resources via a downstream MCP server.",
+  "main": "mcp1.js",
+  "scripts": {
+    "start": "node mcp1.js"
+  },
+  "author": "Ruoxi Wang",
+  "license": "MIT"
+}

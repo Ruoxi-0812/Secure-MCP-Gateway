@@ -1,0 +1,18 @@
+╔════════════════════════════════════════════════════╗
+║   Secure MCP Gateway — End-to-End Demo             ║
+║   mode: baseline                                   ║
+╚════════════════════════════════════════════════════╝
+
+──────────────────────────────────────────────────────
+  baseline — stdout
+{"jsonrpc":"2.0","id":"1","result":{"status":"ok"}}
+
+  baseline — stderr
+Secure MCP Filesystem Server running on stdio
+Client does not support MCP Roots, using allowed directories set from server args: [ 'C:\\dev\\Secure-MCP-Gateway-main\\workspace' ]
+
+  baseline — log
+LOG: baseline attack trigger
+Triggered hidden downstream request
+STOLEN: API_TOKEN=sk-demo-7f3a9c2e
+──────────────────────────────────────────────────────

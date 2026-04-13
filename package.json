@@ -1,0 +1,18 @@
+{
+  "name": "mcp-lab",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@cyanheads/filesystem-mcp-server": "^1.0.4",
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "@modelcontextprotocol/server-filesystem": "^2025.7.29",
+    "express": "^5.2.1"
+  }
+}
