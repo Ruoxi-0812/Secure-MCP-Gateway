@@ -5,15 +5,19 @@
 This project evaluates the security properties of a secure middleware (S) in a multi-MCP setting:
  
 ```
-client → MCP1 → S (Gateway) → MCP2
-                     ↕
-              Auth Server (trust anchor)
+Data plane:
+MCP Client → S (Gateway) → MCP Server
+
+Control plane:
+S (Gateway) ⇄ Auth Server
+               identity verification
+               key registry
+               nonce deduplication
 ```
  
-- **MCP1** — a potentially malicious MCP that tries to steal data from downstream
+- **MCP Client** — a legitimate MCP orchestrator assumed to route all inter-MCP requests through the Gateway
 - **S (Gateway)** — the secure middleware being evaluated; enforces 5 defence layers; delegates cryptographic verification to the Auth Server
-- **Auth Server** — remote trust anchor; owns the public-key registry, RSA-SHA256 signature verification, and nonce deduplication
-- **MCP2** — a trusted filesystem MCP with access to sensitive files
+- **MCP Server** — a trusted filesystem MCP server with access to sensitive files
  
 We focus on common client-server attack vectors, including:
 
@@ -265,8 +269,8 @@ BENCH_N=200 BENCH_N_SESSIONS=30 \
 
 ## Topology Notes
 
-This implementation models a single-hop trust boundary (`MCP1 → S → MCP2`).  
-In a chain or mesh topology (`MCP1 → S₁ → MCP2 → S₂ → MCP3`), each downstream  
+This implementation models a single-hop trust boundary (`MCP Client → S → MCP Server`).  
+In a chain or mesh topology (`MCP Client → S₁ → MCP Server₁ → S₂ → MCP Server₂`), each downstream  
 connection point can deploy its own Gateway instance with its own `caller_keys.json`  
 and `TOOL_POLICIES`. The design composes: each S independently enforces its local  
 policy without requiring a centralised coordinator.
