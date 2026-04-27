@@ -70,16 +70,42 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function startAuthServer() {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(process.execPath, [path.join(ROOT, "auth-server", "server.js")], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        AUTH_SERVER_PORT:   "4001",
+        GATEWAY_AUTH_TOKEN: "dev-gateway-token",
+        CALLER_KEYS_CONFIG: path.join(ROOT, "secure-proxy", "caller_keys.json"),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let buf = "", settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    proc.stdout.on("data", (d) => { buf += d.toString(); if (buf.includes("Auth Server listening on")) done(proc); });
+    proc.stderr.on("data", () => {});
+    proc.on("error", (e) => { if (!settled) { settled = true; reject(e); } });
+    proc.on("exit", (c) => { if (!settled) { settled = true; reject(new Error(`auth-server exited (${c})`)); } });
+    setTimeout(() => { if (!settled) { settled = true; proc.kill(); reject(new Error("auth-server timeout")); } }, 5000);
+  });
+}
+
 async function startSecureProxy({ enableTls }) {
+  const authProc = await startAuthServer();
+
   return new Promise((resolve, reject) => {
     const script = path.join(ROOT, "secure-proxy", "server.js");
 
     const env = {
       ...process.env,
-      SECURE_PROXY_PORT: S_PORT,
-      ENABLE_TLS: enableTls ? "true" : "false",
-      ENABLE_MTLS: "false",
-      CALLER_KEYS_CONFIG: path.join(ROOT, "secure-proxy", "caller_keys.json"),
+      SECURE_PROXY_PORT:  S_PORT,
+      ENABLE_TLS:         enableTls ? "true" : "false",
+      ENABLE_MTLS:        "false",
+      AUTH_SERVER_URL:    "http://127.0.0.1:4001",
+      GATEWAY_AUTH_TOKEN: "dev-gateway-token",
       MCP2_COMMAND: process.execPath,
       MCP2_ARGS: JSON.stringify([
         path.join(
@@ -122,11 +148,7 @@ async function startSecureProxy({ enableTls }) {
       if (!settled && stdout.includes(readyMatcher)) {
         settled = true;
         cleanupListeners();
-        resolve({
-          proc,
-          stdout,
-          stderr,
-        });
+        resolve({ proc, authProc, stdout, stderr });
       }
     });
 
@@ -254,10 +276,11 @@ async function runDefended({ enableTls, label, message }) {
     },
   };
 
-  let sProc;
+  let sProc, authProc;
   try {
     const started = await startSecureProxy({ enableTls });
-    sProc = started.proc;
+    sProc    = started.proc;
+    authProc = started.authProc;
 
     await sleep(300);
 
@@ -285,7 +308,7 @@ async function runDefended({ enableTls, label, message }) {
 
     printResult(label, result);
   } finally {
-    await stopProcess(sProc);
+    await Promise.all([stopProcess(sProc), stopProcess(authProc)]);
   }
 }
 

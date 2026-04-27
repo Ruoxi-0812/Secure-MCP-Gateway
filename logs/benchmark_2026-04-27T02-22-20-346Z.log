@@ -1,6 +1,6 @@
 ╔════════════════════════════════════════════════════╗
 ║   Secure MCP Gateway — Benchmark                   ║
-║   requests: 500   warmup: 20   sessions: 50        ║
+║   requests: 100   warmup: 10   sessions: 20        ║
 ╚════════════════════════════════════════════════════╝
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -8,18 +8,18 @@
 ├──────────────────────────┬───────┬───────┬───────┬───────┬───────┬────────┤
 │ Scenario                 │  mean │   min │   max │   p50 │   p95 │    p99 │
 ├──────────────────────────┼───────┼───────┼───────┼───────┼───────┼────────┤
-│ baseline                 │ 1.008 │ 0.498 │ 3.487 │ 0.936 │ 1.649 │  2.291 │
-│ defended                 │ 2.003 │ 1.128 │ 3.959 │ 1.957 │ 2.880 │  3.646 │
-│ session_establishment    │ 3.506 │ 2.604 │ 4.744 │ 3.513 │ 4.112 │  4.744 │
+│ baseline                 │ 0.413 │ 0.340 │ 0.596 │ 0.402 │ 0.539 │  0.596 │
+│ defended                 │ 1.355 │ 1.221 │ 1.790 │ 1.339 │ 1.556 │  1.790 │
+│ session_establishment    │ 3.328 │ 3.146 │ 3.586 │ 3.299 │ 3.586 │  3.586 │
 └──────────────────────────┴───────┴───────┴───────┴───────┴───────┴────────┘
 
-  Gateway overhead: +0.995 ms mean (+98.7% relative to baseline)
+  Gateway overhead: +0.942 ms mean (+228.1% relative to baseline)
 
   Gateway resource usage (during benchmark load):
-    RSS memory  : 57.52 MB → 63.99 MB  (Δ 6.47 MB)
-    Heap used   : 9.76 MB → 12.67 MB  (Δ 2.92 MB)
-    CPU user    : 532.0 ms
-    CPU system  : 94.0 ms
+    RSS memory  : 54.02 MB → 61.73 MB  (Δ 7.72 MB)
+    Heap used   : 8.16 MB → 11.43 MB  (Δ 3.26 MB)
+    CPU user    : 58.1 ms
+    CPU system  : 7.7 ms
 
-  Raw data → C:\dev\Secure-MCP-Gateway-main\benchmark_results.csv
+  Raw data → /Users/carol/Desktop/Secure-MCP-Gateway-New/benchmark_results.csv
   Plot with: pandas / matplotlib / Excel / R

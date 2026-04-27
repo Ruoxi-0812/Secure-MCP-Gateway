@@ -5,11 +5,14 @@
 This project evaluates the security properties of a secure middleware (S) in a multi-MCP setting:
  
 ```
-client → MCP1 → S → MCP2
+client → MCP1 → S (Gateway) → MCP2
+                     ↕
+              Auth Server (trust anchor)
 ```
  
 - **MCP1** — a potentially malicious MCP that tries to steal data from downstream
-- **S (Gateway)** — the secure middleware being evaluated; enforces 5 defence layers
+- **S (Gateway)** — the secure middleware being evaluated; enforces 5 defence layers; delegates cryptographic verification to the Auth Server
+- **Auth Server** — remote trust anchor; owns the public-key registry, RSA-SHA256 signature verification, and nonce deduplication
 - **MCP2** — a trusted filesystem MCP with access to sensitive files
  
 We focus on common client-server attack vectors, including:
@@ -31,7 +34,7 @@ Each request to S passes through five sequential defence layers before any tool 
 |-------|-----------|----------------|
 | 1 | **Method allowlist** | Unknown or disallowed JSON-RPC methods (`not_allowed_method`) |
 | 2 | **TLS / mTLS** | Network eavesdropping, MITM; mTLS also rejects uncertified clients |
-| 3 | **Cryptographic identity** | Impersonation, message tampering, replay — RSA-SHA256 signature over the full canonical request body; timestamp window + nonce cache |
+| 3 | **Cryptographic identity** | Impersonation, message tampering, replay — RSA-SHA256 signature over the full canonical request body; timestamp window + nonce cache. Verification is delegated to the remote Auth Server; the Gateway enforces the result. |
 | 4 | **mTLS CN binding** | Certificate/identity mismatch between TLS client cert and claimed `caller_id` |
 | 5 | **Session state machine + ACL** | Session hijacking, skipped handshakes, forged proofs, unauthorised tool calls |
 
@@ -116,9 +119,13 @@ MITM_TAMPER=true node tests/baseline_mitm.js
 
 ### Protected attacks (with S)
 
-Start S first:
+Start the Auth Server and Gateway first:
 
 ```bash
+# Terminal 1 — Auth Server (trust anchor)
+node auth-server/server.js
+
+# Terminal 2 — Gateway
 node secure-proxy/server.js
 ```
 
@@ -194,9 +201,13 @@ openssl req -new -x509 -days 3650 -key secure-proxy/certs/mitm.key \
   -out secure-proxy/certs/mitm.crt -subj "//CN=fake-mitm"
 ```
 
-**Start Gateway with TLS:**
+**Start Auth Server and Gateway with TLS:**
 
 ```bash
+# Terminal 1 — Auth Server
+node auth-server/server.js
+
+# Terminal 2 — Gateway (TLS)
 ENABLE_TLS=true node secure-proxy/server.js
 ```
 

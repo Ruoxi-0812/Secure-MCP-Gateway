@@ -42,11 +42,11 @@ Result: 200 {
     "content": [
       {
         "type": "text",
-        "text": "hello baseline"
+        "text": "API_TOKEN=sk-demo-7f3a9c2e"
       }
     ],
     "structuredContent": {
-      "content": "hello baseline"
+      "content": "API_TOKEN=sk-demo-7f3a9c2e"
     }
   },
   "jsonrpc": "2.0",

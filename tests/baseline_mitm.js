@@ -102,6 +102,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(LISTEN_PORT, () => {
+  console.log("╔════════════════════════════════════════════════════╗");
+  console.log("║   Secure MCP Gateway — Baseline MITM Relay         ║");
+  console.log(`║   tamper: ${String(TAMPER).padEnd(42)}║`);
+  console.log("╚════════════════════════════════════════════════════╝");
   console.log(`MITM relay listening on http://127.0.0.1:${LISTEN_PORT}/rpc`);
   console.log(`Forwarding to http://${TARGET_HOST}:${TARGET_PORT}${TARGET_PATH}`);
 });

@@ -551,13 +551,22 @@ async function main() {
     `listening on http://127.0.0.1:${BASELINE_PORT}`
   );
 
+  process.stdout.write("[eval] Starting Auth Server...\n");
+  const authProc = await startProcess(
+    path.join(ROOT, "auth-server", "server.js"),
+    { AUTH_SERVER_PORT: "4001", GATEWAY_AUTH_TOKEN: "dev-gateway-token", CALLER_KEYS_CONFIG },
+    "Auth Server listening on"
+  );
+
   process.stdout.write("[eval] Starting Gateway (S)...\n");
   const gatewayProc = await startProcess(
     path.join(ROOT, "secure-proxy", "server.js"),
     {
       SECURE_PROXY_PORT: String(GATEWAY_PORT),
       ENABLE_TLS: "false", ENABLE_MTLS: "false",
-      CALLER_KEYS_CONFIG, MCP2_ARGS,
+      AUTH_SERVER_URL: "http://127.0.0.1:4001",
+      GATEWAY_AUTH_TOKEN: "dev-gateway-token",
+      MCP2_ARGS,
       MAX_OPS_PER_SESSION: "9999",
     },
     `S listening on http://127.0.0.1:${GATEWAY_PORT}`
@@ -579,7 +588,7 @@ async function main() {
     printSummary(results, perfResult);
   } finally {
     process.stdout.write("\n[eval] Stopping servers...\n");
-    await Promise.all([stopProcess(baselineProc), stopProcess(gatewayProc)]);
+    await Promise.all([stopProcess(baselineProc), stopProcess(gatewayProc), stopProcess(authProc)]);
   }
 }
 

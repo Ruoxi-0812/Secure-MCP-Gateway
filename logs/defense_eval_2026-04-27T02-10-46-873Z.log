@@ -66,23 +66,23 @@
 
 ════════════════════════════════════════════════════════════════════════════════════════════════════
   PERFORMANCE EVALUATION
-  5 warmup + 200 timed requests per scenario  |  30 session establishments
+  5 warmup + 50 timed requests per scenario  |  10 session establishments
 ════════════════════════════════════════════════════════════════════════════════════════════════════
 
   Scenario                         │  mean  │  p50   │  p95   │  p99   │   min  │   max  (ms)
   ────────────────────────────────────────────────────────────────────────────────────────────
-  (A) Baseline (no S)              │   1.01 │   0.98 │   1.49 │   1.79 │   0.56 │   1.88
-  (B) Gateway (S) — session reused │   1.30 │   1.24 │   1.91 │   2.43 │   0.65 │   3.15
-  (C) Session establishment        │   3.73 │   3.76 │   4.35 │   5.50 │   2.80 │   5.50
+  (A) Baseline (no S)              │   0.42 │   0.40 │   0.55 │   0.65 │   0.36 │   0.65
+  (B) Gateway (S) — session reused │   0.74 │   0.71 │   1.00 │   1.12 │   0.65 │   1.12
+  (C) Session establishment        │   3.26 │   3.26 │   3.46 │   3.46 │   3.16 │   3.46
 
-  Per-request gateway overhead: +0.30 ms mean  (+29.3% vs baseline)
+  Per-request gateway overhead: +0.32 ms mean  (+76.5% vs baseline)
   Session amortisation: if a session handles ≥10 requests, establishment cost
-  (~3.7 ms) adds < 0.37 ms per request.
+  (~3.3 ms) adds < 0.33 ms per request.
 
-  Gateway resource usage during 200 defended requests:
-    RSS memory  : 58.27 MB → 62.20 MB  (Δ 3.93 MB)
-    Heap used   : 10.80 MB → 12.30 MB  (Δ 1.51 MB)
-    CPU user    : +172.0 ms   CPU system: +109.0 ms
+  Gateway resource usage during 50 defended requests:
+    RSS memory  : 55.80 MB → 57.77 MB  (Δ 1.97 MB)
+    Heap used   : 8.86 MB → 10.04 MB  (Δ 1.17 MB)
+    CPU user    : +14.6 ms   CPU system: +2.4 ms
 
 ════════════════════════════════════════════════════════════════════════════════════════════════════
   DEFENSE EVALUATION SUMMARY
@@ -106,10 +106,10 @@
     Layer 4 — mTLS CN binding       blocks: cert/identity mismatch
     Layer 5 — Session + ACL         blocks: session hijacking, unauthorized access
 
-  Performance overhead (200 requests each):
-    Baseline mean latency : 1.01 ms
-    Gateway mean latency  : 1.30 ms
-    Absolute overhead     : +0.30 ms per request
-    Relative overhead     : +29.3%
-    Session setup cost    : 3.7 ms (amortised over N calls)
+  Performance overhead (50 requests each):
+    Baseline mean latency : 0.42 ms
+    Gateway mean latency  : 0.74 ms
+    Absolute overhead     : +0.32 ms per request
+    Relative overhead     : +76.5%
+    Session setup cost    : 3.3 ms (amortised over N calls)
 ════════════════════════════════════════════════════════════════════════════════════════════════════

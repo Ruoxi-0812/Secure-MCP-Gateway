@@ -13,10 +13,10 @@ fake HTTPS MITM listening on https://127.0.0.1:4445/rpc
 initialize:
 
   client — stderr
-Error: self-signed certificate; if the root CA is installed locally, try running Node.js with --use-system-ca
+Error: self-signed certificate
 ──────────────────────────────────────────────────────
 
   expected TLS failure — certificate correctly rejected
-  Command failed: C:\Program Files\nodejs\node.exe tests/protected_attacks.js demo
-Error: self-signed certificate; if the root CA is installed locally, try running Node.js with --use-system-ca
+  Command failed: /Users/carol/.nvm/versions/node/v22.20.0/bin/node tests/protected_attacks.js demo
+Error: self-signed certificate
 

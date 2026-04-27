@@ -1,0 +1,6 @@
+╔════════════════════════════════════════════════════╗
+║   Secure MCP Gateway — Protected Attack Tests      ║
+║   test: demo                                       ║
+╚════════════════════════════════════════════════════╝
+initialize:
+[ERROR] Error: self-signed certificate

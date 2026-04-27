@@ -9,7 +9,7 @@
 
   baseline — stderr
 Secure MCP Filesystem Server running on stdio
-Client does not support MCP Roots, using allowed directories set from server args: [ 'C:\\dev\\Secure-MCP-Gateway-main\\workspace' ]
+Client does not support MCP Roots, using allowed directories set from server args: [ '/Users/carol/Desktop/Secure-MCP-Gateway-New/workspace' ]
 
   baseline — log
 LOG: baseline attack trigger

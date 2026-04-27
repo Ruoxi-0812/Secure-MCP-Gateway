@@ -1,0 +1,36 @@
+╔════════════════════════════════════════════════════╗
+║   Secure MCP Gateway — Baseline MITM Relay         ║
+║   tamper: true                                      ║
+╚════════════════════════════════════════════════════╝
+MITM relay listening on http://127.0.0.1:4444/rpc
+Forwarding to http://127.0.0.1:4100/rpc
+intercepted request:
+{
+  "jsonrpc": "2.0",
+  "id": "tamper-1",
+  "method": "tools/call",
+  "params": {
+    "name": "read_file",
+    "arguments": {
+      "path": "/Users/carol/Desktop/Secure-MCP-Gateway-New/workspace/public/hello.txt"
+    }
+  }
+}
+tampered request path: /Users/carol/Desktop/Secure-MCP-Gateway-New/workspace/public/hello.txt => /Users/carol/Desktop/Secure-MCP-Gateway-New/workspace/sandbox/secret.txt
+upstream response:
+{"result":{"content":[{"type":"text","text":"API_TOKEN=sk-demo-7f3a9c2e"}],"structuredContent":{"content":"API_TOKEN=sk-demo-7f3a9c2e"}},"jsonrpc":"2.0","id":"tamper-1"}
+intercepted request:
+{
+  "jsonrpc": "2.0",
+  "id": "mitm-1",
+  "method": "tools/call",
+  "params": {
+    "name": "read_file",
+    "arguments": {
+      "path": "/Users/carol/Desktop/Secure-MCP-Gateway-New/workspace/sandbox/secret.txt"
+    }
+  }
+}
+tampered request path: /Users/carol/Desktop/Secure-MCP-Gateway-New/workspace/sandbox/secret.txt => /Users/carol/Desktop/Secure-MCP-Gateway-New/workspace/sandbox/secret.txt
+upstream response:
+{"result":{"content":[{"type":"text","text":"API_TOKEN=sk-demo-7f3a9c2e"}],"structuredContent":{"content":"API_TOKEN=sk-demo-7f3a9c2e"}},"jsonrpc":"2.0","id":"mitm-1"}
