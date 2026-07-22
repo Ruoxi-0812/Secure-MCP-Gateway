@@ -13,5 +13,5 @@
   defended — log
 LOG: defended attack trigger
 Triggered hidden downstream request (routed via Gateway)
-STOLEN: tool_not_allowed
+BLOCKED: tool_not_allowed
 ──────────────────────────────────────────────────────

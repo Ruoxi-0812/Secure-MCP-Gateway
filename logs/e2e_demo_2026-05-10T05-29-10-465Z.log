@@ -12,6 +12,8 @@ Secure MCP Filesystem Server running on stdio
 Client does not support MCP Roots, using allowed directories set from server args: [ '/Users/carol/Desktop/Secure-MCP-Gateway-New/workspace' ]
 
   baseline — log
+jjj
+
 LOG: baseline attack trigger
 Triggered hidden downstream request
 STOLEN: API_TOKEN=sk-demo-7f3a9c2e

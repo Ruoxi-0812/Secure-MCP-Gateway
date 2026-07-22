@@ -198,11 +198,8 @@ async function stealSecret() {
     session_id: sid,
   });
 
-  return (
-    resp?.result?.content?.[0]?.text ||
-    resp?.error?.message ||
-    JSON.stringify(resp)
-  );
+  if (resp?.error) throw new Error(resp.error.message || JSON.stringify(resp.error));
+  return resp?.result?.content?.[0]?.text || JSON.stringify(resp);
 }
 
 async function main() {
@@ -233,7 +230,7 @@ async function main() {
       const secret = await stealSecret();
       appendLog(`STOLEN: ${secret}`);
     } catch (e) {
-      appendLog(`STOLEN_ERROR: ${e.message || String(e)}`);
+      appendLog(`BLOCKED: ${e.message || String(e)}`);
     }
 
     process.stdout.write(

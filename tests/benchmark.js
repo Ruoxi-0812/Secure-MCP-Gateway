@@ -38,6 +38,12 @@ const ROOT = path.join(__dirname, "..");
 const N_WARMUP   = parseInt(process.env.BENCH_WARMUP     || "10");
 const N_REQUESTS = parseInt(process.env.BENCH_N          || "100");
 const N_SESSIONS = parseInt(process.env.BENCH_N_SESSIONS || "20");
+const SESSION_AUTH = process.env.BENCH_SESSION_AUTH || "hmac";
+const INCLUDE_CLIENT_SIGNING = process.env.BENCH_INCLUDE_CLIENT_SIGNING === "true";
+const HTTP_AGENT = new http.Agent({
+  keepAlive: true,
+  maxSockets: Number(process.env.BENCH_MAX_SOCKETS || 64),
+});
 
 const BASELINE_PORT   = 4100;
 const GATEWAY_PORT    = 4000;
@@ -96,11 +102,34 @@ function signRequest(bodyObj) {
   return signer.sign(PRIVATE_KEY).toString("base64");
 }
 
+function macRequest(bodyObj, macKeyB64) {
+  const cloned = JSON.parse(JSON.stringify(bodyObj));
+  if (cloned.auth && typeof cloned.auth === "object") {
+    cloned.auth.mac = "";
+    cloned.auth.signature = "";
+  }
+  return crypto
+    .createHmac("sha256", Buffer.from(String(macKeyB64), "base64"))
+    .update(canonicalJSONStringify(cloned))
+    .digest("hex");
+}
+
 function signReadyProof(sid, challenge) {
   const signer = crypto.createSign("sha256");
   signer.update(`${sid}|${challenge}|${CALLER_ID}`);
   signer.end();
   return signer.sign(PRIVATE_KEY).toString("base64");
+}
+
+function unwrapSessionKey(wrappedKeyB64) {
+  return crypto.privateDecrypt(
+    {
+      key: PRIVATE_KEY,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "sha256",
+    },
+    Buffer.from(String(wrappedKeyB64), "base64")
+  ).toString("utf8");
 }
 
 function buildSignedRequest({ id, method, params, session_id }) {
@@ -121,6 +150,32 @@ function buildSignedRequest({ id, method, params, session_id }) {
   return body;
 }
 
+function buildMacRequest({ id, method, params, session_id, mac_key }) {
+  const body = {
+    jsonrpc: "2.0",
+    id: String(id),
+    method,
+    params,
+    auth: {
+      caller_id: CALLER_ID,
+      timestamp: Math.floor(Date.now() / 1000),
+      nonce: randNonce(),
+      session_id: String(session_id),
+      signature: "",
+      mac: "",
+    },
+  };
+  body.auth.mac = macRequest(body, mac_key);
+  return body;
+}
+
+function buildSessionRequest({ id, method, params, session }) {
+  if (SESSION_AUTH === "hmac") {
+    return buildMacRequest({ id, method, params, session_id: session.sid, mac_key: session.macKey });
+  }
+  return buildSignedRequest({ id, method, params, session_id: session.sid });
+}
+
 function postJson(urlStr, bodyObj) {
   return new Promise((resolve, reject) => {
     const url = new URL(urlStr);
@@ -130,6 +185,7 @@ function postJson(urlStr, bodyObj) {
       port: Number(url.port),
       path: url.pathname,
       method: "POST",
+      agent: HTTP_AGENT,
       headers: { "Content-Type": "application/json", "Content-Length": payload.length },
     }, (res) => {
       let data = "";
@@ -146,7 +202,7 @@ function postJson(urlStr, bodyObj) {
 function getJson(urlStr) {
   return new Promise((resolve, reject) => {
     const url = new URL(urlStr);
-    http.get({ hostname: url.hostname, port: Number(url.port), path: url.pathname }, (res) => {
+    http.get({ hostname: url.hostname, port: Number(url.port), path: url.pathname, agent: HTTP_AGENT }, (res) => {
       let data = "";
       res.setEncoding("utf8");
       res.on("data", (chunk) => (data += chunk));
@@ -217,7 +273,8 @@ async function establishSession() {
   });
   const readyResp = await postJson(GATEWAY_URL, readyBody);
   if (readyResp?.error) throw new Error(`s.ready failed: ${JSON.stringify(readyResp)}`);
-  return String(sid);
+  const wrapped = readyResp?.result?.wrapped_mac_key;
+  return { sid: String(sid), macKey: wrapped ? unwrapSessionKey(wrapped) : null };
 }
 
 function computeStats(samples) {
@@ -265,24 +322,40 @@ async function benchBaseline() {
   return { label: "baseline", samples };
 }
 
-async function benchDefended(sid) {
+async function benchDefended(session) {
   process.stdout.write(`\n[bench] Scenario 2 — Defended latency (${N_WARMUP} warmup + ${N_REQUESTS} requests)\n`);
+  process.stdout.write(`  session auth: ${SESSION_AUTH}\n`);
+  if (INCLUDE_CLIENT_SIGNING) {
+    process.stdout.write("  timing mode: end-to-end security path, including caller-side authenticator generation\n");
+  } else {
+    process.stdout.write("  timing mode: gateway enforcement path, caller-side authenticator generation excluded\n");
+  }
 
   for (let i = 0; i < N_WARMUP; i++) {
-    await postJson(GATEWAY_URL, buildSignedRequest({
+    await postJson(GATEWAY_URL, buildSessionRequest({
       id: `w${i}`, method: "tools/call",
       params: { name: "list_allowed_directories", arguments: {} },
-      session_id: sid,
+      session,
     }));
   }
 
   const samples = [];
   for (let i = 0; i < N_REQUESTS; i++) {
-    const ms = await timedCall(() => postJson(GATEWAY_URL, buildSignedRequest({
-      id: String(2000 + i), method: "tools/call",
-      params: { name: "list_allowed_directories", arguments: {} },
-      session_id: sid,
-    })));
+    let ms;
+    if (INCLUDE_CLIENT_SIGNING) {
+      ms = await timedCall(() => postJson(GATEWAY_URL, buildSessionRequest({
+        id: String(2000 + i), method: "tools/call",
+        params: { name: "list_allowed_directories", arguments: {} },
+        session,
+      })));
+    } else {
+      const body = buildSessionRequest({
+        id: String(2000 + i), method: "tools/call",
+        params: { name: "list_allowed_directories", arguments: {} },
+        session,
+      });
+      ms = await timedCall(() => postJson(GATEWAY_URL, body));
+    }
     samples.push(ms);
     if ((i + 1) % 25 === 0) process.stdout.write(`  progress: ${i + 1}/${N_REQUESTS}\n`);
   }
@@ -325,9 +398,16 @@ function printTable(results) {
   const b = results.find((r) => r.label === "baseline");
   const d = results.find((r) => r.label === "defended");
   if (b && d) {
-    const overhead = (parseFloat(d.s.mean) - parseFloat(b.s.mean)).toFixed(3);
-    const pct      = ((parseFloat(overhead) / parseFloat(b.s.mean)) * 100).toFixed(1);
-    console.log(`\n  Gateway overhead: +${overhead} ms mean (+${pct}% relative to baseline)`);
+    const overheadValue = parseFloat(d.s.mean) - parseFloat(b.s.mean);
+    const overhead = overheadValue.toFixed(3);
+    const pct = ((overheadValue / parseFloat(b.s.mean)) * 100).toFixed(1);
+    const overheadPrefix = overheadValue >= 0 ? "+" : "";
+    const pctPrefix = overheadValue >= 0 ? "+" : "";
+    console.log(`\n  Gateway overhead: ${overheadPrefix}${overhead} ms mean (${pctPrefix}${pct}% relative to baseline)`);
+    if (!INCLUDE_CLIENT_SIGNING) {
+      console.log("  Note: caller-side authenticator generation is excluded from the defended timed region.");
+      console.log("        Set BENCH_INCLUDE_CLIENT_SIGNING=true to measure end-to-end security-path latency.");
+    }
   }
 }
 
@@ -397,13 +477,16 @@ async function main() {
 
   try {
     process.stdout.write("\n[bench] Establishing benchmark session...\n");
-    const sid = await establishSession();
-    process.stdout.write(`[bench] Session: ${sid}\n`);
+    const session = await establishSession();
+    process.stdout.write(`[bench] Session: ${session.sid}\n`);
+    if (SESSION_AUTH === "hmac" && !session.macKey) {
+      throw new Error("gateway did not return wrapped session MAC key");
+    }
 
     const metricsBefore = await getJson(GATEWAY_METRICS);
 
     const r1 = await benchBaseline();
-    const r2 = await benchDefended(sid);
+    const r2 = await benchDefended(session);
     const r3 = await benchSessionEstablishment();
 
     const metricsAfter = await getJson(GATEWAY_METRICS);

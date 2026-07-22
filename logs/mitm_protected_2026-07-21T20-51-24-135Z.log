@@ -17,6 +17,6 @@ Error: self-signed certificate
 ──────────────────────────────────────────────────────
 
   expected TLS failure — certificate correctly rejected
-  Command failed: /Users/carol/.nvm/versions/node/v22.20.0/bin/node tests/protected_attacks.js demo
+  Command failed: /Users/carol/.nvm/versions/node/v22.20.0/bin/node /Users/carol/Desktop/Secure-MCP-Gateway-New/tests/protected_attacks.js demo
 Error: self-signed certificate
 

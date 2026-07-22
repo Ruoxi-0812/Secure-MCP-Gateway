@@ -71,18 +71,18 @@
 
   Scenario                         │  mean  │  p50   │  p95   │  p99   │   min  │   max  (ms)
   ────────────────────────────────────────────────────────────────────────────────────────────
-  (A) Baseline (no S)              │   0.42 │   0.40 │   0.55 │   0.65 │   0.36 │   0.65
-  (B) Gateway (S) — session reused │   0.74 │   0.71 │   1.00 │   1.12 │   0.65 │   1.12
-  (C) Session establishment        │   3.26 │   3.26 │   3.46 │   3.46 │   3.16 │   3.46
+  (A) Baseline (no S)              │   0.73 │   0.48 │   1.84 │   3.45 │   0.30 │   3.45
+  (B) Gateway (S) — session reused │   0.82 │   0.77 │   1.29 │   1.37 │   0.64 │   1.37
+  (C) Session establishment        │   3.85 │   3.76 │   4.63 │   4.63 │   3.53 │   4.63
 
-  Per-request gateway overhead: +0.32 ms mean  (+76.5% vs baseline)
+  Per-request gateway overhead: +0.09 ms mean  (+12.4% vs baseline)
   Session amortisation: if a session handles ≥10 requests, establishment cost
-  (~3.3 ms) adds < 0.33 ms per request.
+  (~3.8 ms) adds < 0.38 ms per request.
 
   Gateway resource usage during 50 defended requests:
-    RSS memory  : 55.80 MB → 57.77 MB  (Δ 1.97 MB)
-    Heap used   : 8.86 MB → 10.04 MB  (Δ 1.17 MB)
-    CPU user    : +14.6 ms   CPU system: +2.4 ms
+    RSS memory  : 55.94 MB → 57.63 MB  (Δ 1.69 MB)
+    Heap used   : 8.93 MB → 10.08 MB  (Δ 1.15 MB)
+    CPU user    : +16.8 ms   CPU system: +2.4 ms
 
 ════════════════════════════════════════════════════════════════════════════════════════════════════
   DEFENSE EVALUATION SUMMARY
@@ -107,9 +107,9 @@
     Layer 5 — Session + ACL         blocks: session hijacking, unauthorized access
 
   Performance overhead (50 requests each):
-    Baseline mean latency : 0.42 ms
-    Gateway mean latency  : 0.74 ms
-    Absolute overhead     : +0.32 ms per request
-    Relative overhead     : +76.5%
-    Session setup cost    : 3.3 ms (amortised over N calls)
+    Baseline mean latency : 0.73 ms
+    Gateway mean latency  : 0.82 ms
+    Absolute overhead     : +0.09 ms per request
+    Relative overhead     : +12.4%
+    Session setup cost    : 3.8 ms (amortised over N calls)
 ════════════════════════════════════════════════════════════════════════════════════════════════════

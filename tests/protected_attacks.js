@@ -37,6 +37,10 @@
  * │    │                          │ unknown_method       │ 403 not_allowed_method (Layer 1)     │
  * ├────┼──────────────────────────┼─────────────────────┼──────────────────────────────────────┤
  * │ 6  │ MITM                     │ (mitm_protected)     │ TLS blocks interception entirely     │
+ * ├────┼──────────────────────────┼─────────────────────┼──────────────────────────────────────┤
+ * │ 7  │ Session-HMAC             │ hmac_bad_mac        │ 403 bad_mac                          │
+ * │    │                          │ hmac_replay         │ 403 replay_nonce_reused              │
+ * │    │                          │ hmac_tamper_body    │ 403 bad_mac                          │
  * └────┴──────────────────────────┴─────────────────────┴──────────────────────────────────────┘
  *
  */
@@ -62,7 +66,8 @@ const https = require("https");
 const S_URL = process.env.S_URL || "http://127.0.0.1:4000/rpc";
 const CALLER_ID = process.env.CALLER_ID || "mcp1";
 const MCP1_PRIVATE_KEY_PATH = process.env.MCP1_PRIVATE_KEY_PATH || "";
-const HIJACK_PRIVATE_KEY_PATH = process.env.HIJACK_PRIVATE_KEY_PATH || "";
+const HIJACK_PRIVATE_KEY_PATH = process.env.HIJACK_PRIVATE_KEY_PATH ||
+  path.join(__dirname, "..", "secure-proxy", "certs", "mcp2_private.pem");
 const TLS_CA_PATH = process.env.TLS_CA_PATH || "";
 const ENABLE_MTLS = process.env.ENABLE_MTLS === "true";
 const TLS_CLIENT_CERT = process.env.TLS_CLIENT_CERT || "";
@@ -105,6 +110,15 @@ function getCanonicalSignedPayload(bodyObj) {
   return canonicalJSONStringify(cloned);
 }
 
+function getCanonicalMacPayload(bodyObj) {
+  const cloned = JSON.parse(JSON.stringify(bodyObj));
+  if (cloned.auth && typeof cloned.auth === "object") {
+    cloned.auth.mac = "";
+    cloned.auth.signature = "";
+  }
+  return canonicalJSONStringify(cloned);
+}
+
 function signRequest(bodyObj, privateKey = PRIVATE_KEY) {
   if (!privateKey) die("private key is required.");
   const signer = crypto.createSign("sha256");
@@ -119,6 +133,25 @@ function signReadyProof(sid, challenge, callerId = CALLER_ID, privateKey = PRIVA
   signer.update(`${sid}|${challenge}|${callerId}`);
   signer.end();
   return signer.sign(privateKey).toString("base64");
+}
+
+function unwrapSessionKey(wrappedKeyB64, privateKey = PRIVATE_KEY) {
+  if (!privateKey) die("private key is required.");
+  return crypto.privateDecrypt(
+    {
+      key: privateKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "sha256",
+    },
+    Buffer.from(String(wrappedKeyB64), "base64")
+  ).toString("utf8");
+}
+
+function macRequest(bodyObj, macKeyB64) {
+  return crypto
+    .createHmac("sha256", Buffer.from(String(macKeyB64), "base64"))
+    .update(getCanonicalMacPayload(bodyObj))
+    .digest("hex");
 }
 
 function randNonce() {
@@ -138,6 +171,17 @@ function makeAuth({ callerId = CALLER_ID, timestamp = nowSec(), nonce = randNonc
   };
   if (session_id !== undefined) auth.session_id = String(session_id);
   return auth;
+}
+
+function makeMacAuth({ callerId = CALLER_ID, timestamp = nowSec(), nonce = randNonce(), session_id } = {}) {
+  return {
+    caller_id: callerId,
+    timestamp,
+    nonce,
+    session_id: String(session_id),
+    signature: "",
+    mac: "",
+  };
 }
 
 function jsonRpc(id, method, params, auth) {
@@ -210,6 +254,38 @@ function signBody(body, privateKey = PRIVATE_KEY) {
   return body;
 }
 
+function macBody(body, macKeyB64) {
+  body.auth.mac = macRequest(body, macKeyB64);
+  return body;
+}
+
+function responseMessage(resp) {
+  return resp.json?.error?.message || "";
+}
+
+function showResp(resp) {
+  return resp.json ? JSON.stringify(resp.json) : resp.raw;
+}
+
+function expectResponse(resp, status, message) {
+  const actualMessage = responseMessage(resp);
+  if (resp.status !== status || (message && actualMessage !== message)) {
+    throw new Error(
+      `expected HTTP ${status} ${message || ""}, got HTTP ${resp.status} ${actualMessage || showResp(resp)}`
+    );
+  }
+}
+
+function buildMacToolRequest(name, args, session, { id = "1", nonce, timestamp } = {}) {
+  const body = jsonRpc(
+    id,
+    "tools/call",
+    { name, arguments: args || {} },
+    makeMacAuth({ session_id: session.sid, nonce, timestamp })
+  );
+  return macBody(body, session.macKey);
+}
+
 async function callToolAsCaller(name, args, callerId, privateKey, { id = "1", session_id, ...opts } = {}) {
   const body = jsonRpc(
     id,
@@ -270,7 +346,9 @@ async function createReadySession() {
   const proof = signReadyProof(String(sid), String(challenge));
   const readyResp = await callTool("s.ready", { proof }, { id: "3", session_id: sid });
   console.log("ready:", readyResp.status, readyResp.json || readyResp.raw);
-  return { sid, challenge, readyResp };
+  const wrapped = readyResp.json?.result?.wrapped_mac_key;
+  const macKey = wrapped ? unwrapSessionKey(wrapped) : null;
+  return { sid, challenge, readyResp, macKey };
 }
 
 async function demo() {
@@ -544,8 +622,71 @@ async function unknownMethod() {
   console.log("Expected: 403 not_allowed_method");
 }
 
+async function hmacBadMac() {
+  await callInitialize("0");
+  await callInitialized();
+  const session = await createReadySession();
+  if (!session.macKey) die("session did not return wrapped_mac_key");
+
+  const body = buildMacToolRequest(
+    "list_allowed_directories",
+    {},
+    session,
+    { id: "hmac-bad-mac" }
+  );
+  body.auth.mac = "00".repeat(32);
+
+  const r = await postJson(S_URL, body);
+  expectResponse(r, 403, "bad_mac");
+  console.log(r.status, showResp(r));
+  console.log("Expected: 403 bad_mac");
+}
+
+async function hmacReplay() {
+  await callInitialize("0");
+  await callInitialized();
+  const session = await createReadySession();
+  if (!session.macKey) die("session did not return wrapped_mac_key");
+
+  const body = buildMacToolRequest(
+    "list_allowed_directories",
+    {},
+    session,
+    { id: "hmac-replay" }
+  );
+  const r1 = await postJson(S_URL, body);
+  if (r1.status !== 200) {
+    throw new Error(`expected first request to succeed, got HTTP ${r1.status} ${showResp(r1)}`);
+  }
+  console.log("first:", r1.status, showResp(r1));
+  const r2 = await postJson(S_URL, body);
+  expectResponse(r2, 403, "replay_nonce_reused");
+  console.log("replay:", r2.status, showResp(r2));
+  console.log("Expected: first → 200, replay → 403 replay_nonce_reused");
+}
+
+async function hmacTamperBody() {
+  await callInitialize("0");
+  await callInitialized();
+  const session = await createReadySession();
+  if (!session.macKey) die("session did not return wrapped_mac_key");
+
+  const body = buildMacToolRequest(
+    "list_allowed_directories",
+    {},
+    session,
+    { id: "hmac-tamper-body" }
+  );
+  body.params = { name: "read_file", arguments: { path: SECRET_PATH } };
+
+  const r = await postJson(S_URL, body);
+  expectResponse(r, 403, "bad_mac");
+  console.log(r.status, showResp(r));
+  console.log("Expected: 403 bad_mac — request body changed after HMAC");
+}
+
 async function runAll() {
-  const SLOW = process.env.SKIP_SLOW !== "false"; 
+  const SLOW = process.env.SKIP_SLOW === "true"; 
   const results = [];
 
   async function run(name, fn, { skip = false, slow = false } = {}) {
@@ -558,7 +699,7 @@ async function runAll() {
       return;
     }
     if (slow && SLOW) {
-      console.log("  SKIPPED — slow test (run with SKIP_SLOW=false to include)");
+      console.log("  SKIPPED — slow test (unset SKIP_SLOW or use SKIP_SLOW=false to include)");
       results.push({ name, verdict: "skipped (slow)" });
       return;
     }
@@ -600,6 +741,9 @@ async function runAll() {
   await run("write_file_denied", writeFileDenied);
   await run("allowed_tool",      allowedTool);
   await run("unknown_method",    unknownMethod);
+  await run("hmac_bad_mac",      hmacBadMac);
+  await run("hmac_replay",       hmacReplay);
+  await run("hmac_tamper_body",  hmacTamperBody);
 
   const ran     = results.filter((r) => r.verdict === "ran").length;
   const errored = results.filter((r) => r.verdict === "error").length;
@@ -659,6 +803,9 @@ async function main() {
     case "write_file_denied": return writeFileDenied(); 
     case "allowed_tool":     return allowedTool();      
     case "unknown_method":   return unknownMethod();    
+    case "hmac_bad_mac":     return hmacBadMac();
+    case "hmac_replay":      return hmacReplay();
+    case "hmac_tamper_body": return hmacTamperBody();
 
     default:
       die("Unknown command: " + cmd);

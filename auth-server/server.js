@@ -11,6 +11,7 @@
  * Endpoints
  *   POST /verify        — per-request auth (sig + timestamp + nonce)
  *   POST /verify-proof  — s.ready challenge-response proof
+ *   POST /wrap-key      — encrypt a session MAC key for a caller
  *   GET  /health        — liveness check (no token required)
  *
  * Security: every request (except /health) must carry the shared
@@ -33,8 +34,6 @@ const AUTH_TS_WINDOW_SEC   = Number(process.env.AUTH_TS_WINDOW_SEC   || 60);
 const NONCE_TTL_MS         = Number(process.env.NONCE_TTL_MS         || 60_000);
 const MAX_NONCE_CACHE_SIZE = Number(process.env.MAX_NONCE_CACHE_SIZE  || 50_000);
 const PRUNE_INTERVAL_MS    = Number(process.env.PRUNE_INTERVAL_MS    || 30_000);
-
-// ── Key management ────────────────────────────────────────────────────────────
 
 function loadPublicKey(filePath) {
   return crypto.createPublicKey(fs.readFileSync(filePath, "utf8"));
@@ -75,8 +74,6 @@ fs.watch(CALLER_KEYS_CONFIG, (eventType) => {
   }
 });
 
-// ── Nonce cache ───────────────────────────────────────────────────────────────
-
 const nonceCache = new Map();
 
 function pruneNonces(now = Date.now()) {
@@ -100,8 +97,6 @@ function rememberNonce(callerId, nonce) {
 }
 
 setInterval(() => pruneNonces(), PRUNE_INTERVAL_MS).unref();
-
-// ── Crypto helpers ────────────────────────────────────────────────────────────
 
 function canonicalize(v) {
   if (v === null || v === undefined) return v;
@@ -142,7 +137,23 @@ function verifyReadyProof(callerId, sid, challenge, publicKey, proofB64) {
   }
 }
 
-// ── Verification logic ────────────────────────────────────────────────────────
+function wrapSessionKey(callerId, macKeyB64) {
+  const publicKey = PUBLIC_KEYS[String(callerId)];
+  if (!publicKey) return { valid: false, reason: "unknown_caller" };
+  try {
+    const wrapped = crypto.publicEncrypt(
+      {
+        key: publicKey,
+        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: "sha256",
+      },
+      Buffer.from(String(macKeyB64), "utf8")
+    );
+    return { valid: true, wrapped_key: wrapped.toString("base64") };
+  } catch {
+    return { valid: false, reason: "key_wrap_failed" };
+  }
+}
 
 function verifyAuth(body) {
   const auth = body?.auth;
@@ -173,8 +184,6 @@ function verifyAuth(body) {
   return { valid: true, caller_id: String(caller_id) };
 }
 
-// ── Express app ───────────────────────────────────────────────────────────────
-
 const app = express();
 app.use(express.json({ limit: "256kb" }));
 
@@ -202,6 +211,14 @@ app.post("/verify-proof", (req, res) => {
     String(caller_id), String(session_id), String(challenge), publicKey, String(proof)
   );
   res.json({ valid: ok, reason: ok ? null : "bad_ready_proof" });
+});
+
+app.post("/wrap-key", (req, res) => {
+  const { caller_id, mac_key } = req.body || {};
+  if (!caller_id || !mac_key) {
+    return res.status(400).json({ valid: false, reason: "missing_fields" });
+  }
+  res.json(wrapSessionKey(String(caller_id), String(mac_key)));
 });
 
 app.get("/health", (_req, res) => res.json({ ok: true }));

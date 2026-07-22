@@ -28,14 +28,19 @@ const TLS_CERT_PATH = process.env.TLS_CERT_PATH || path.join(__dirname, "certs",
 const TLS_KEY_PATH  = process.env.TLS_KEY_PATH  || path.join(__dirname, "certs", "server.key");
 const TLS_CA_PATH   = process.env.TLS_CA_PATH   || path.join(__dirname, "certs", "ca.crt");
 
-// Remote Auth Server — trust anchor
 const AUTH_SERVER_URL   = process.env.AUTH_SERVER_URL   || "http://127.0.0.1:4001";
 const GATEWAY_AUTH_TOKEN = process.env.GATEWAY_AUTH_TOKEN || "dev-gateway-token";
+const AUTH_HTTP_AGENT = new http.Agent({
+  keepAlive: true,
+  maxSockets: Number(process.env.AUTH_MAX_SOCKETS || 64),
+});
 
 const SESSION_TTL_MS        = Number(process.env.SESSION_TTL_MS        || 5 * 60_000);
 const READY_WINDOW_MS       = Number(process.env.READY_WINDOW_MS       || 60_000);
 const MAX_OPS_PER_SESSION   = Number(process.env.MAX_OPS_PER_SESSION   || 10);
 const MAX_SESSION_STORE_SIZE = Number(process.env.MAX_SESSION_STORE_SIZE || 20_000);
+const MAX_SESSION_NONCES    = Number(process.env.MAX_SESSION_NONCES    || 10_000);
+const MAC_TS_WINDOW_SEC     = Number(process.env.MAC_TS_WINDOW_SEC     || 60);
 const PRUNE_INTERVAL_MS     = Number(process.env.PRUNE_INTERVAL_MS     || 30_000);
 
 const MCP2_COMMAND = process.env.MCP2_COMMAND || process.execPath;
@@ -59,8 +64,6 @@ const ALLOWED_METHODS = new Set([
   "tools/call",
 ]);
 
-// ── Remote auth helpers ───────────────────────────────────────────────────────
-
 function remotePost(endpoint, body) {
   return new Promise((resolve) => {
     const url     = new URL(AUTH_SERVER_URL);
@@ -72,6 +75,7 @@ function remotePost(endpoint, body) {
         port:     Number(url.port) || 4001,
         path:     endpoint,
         method:   "POST",
+        agent:    AUTH_HTTP_AGENT,
         headers:  {
           "Content-Type":     "application/json",
           "Content-Length":   payload.length,
@@ -110,6 +114,13 @@ function callRemoteVerifyProof(callerId, sid, challenge, proof) {
   });
 }
 
+function callRemoteWrapKey(callerId, macKey) {
+  return remotePost("/wrap-key", {
+    caller_id: callerId,
+    mac_key: macKey,
+  });
+}
+
 // ── Session management ────────────────────────────────────────────────────────
 
 const sessionStore = new Map();
@@ -129,6 +140,7 @@ setInterval(() => pruneSessions(), PRUNE_INTERVAL_MS).unref();
 
 function newSessionId() { return crypto.randomBytes(16).toString("hex"); }
 function newChallenge()  { return crypto.randomBytes(16).toString("hex"); }
+function newMacKey()     { return crypto.randomBytes(32).toString("base64"); }
 
 function handleInit(callerId) {
   pruneSessions();
@@ -140,6 +152,9 @@ function handleInit(callerId) {
     callerId,
     state:     "new",
     challenge,
+    macKey:    null,
+    macNonces: new Map(),
+    nextNoncePruneAt: now + MAC_TS_WINDOW_SEC * 1000,
     createdAt: now,
     expiresAt: now + SESSION_TTL_MS,
     opsLeft:   MAX_OPS_PER_SESSION,
@@ -167,20 +182,114 @@ async function handleReady(callerId, sid, proof) {
 
   s.state     = "ready";
   s.challenge = "";
-  return { ok: true };
+  s.macKey    = newMacKey();
+  const wrapped = await callRemoteWrapKey(callerId, s.macKey);
+  if (!wrapped.valid) {
+    s.state = "new";
+    s.macKey = null;
+    return { ok: false, reason: wrapped.reason || "key_wrap_failed" };
+  }
+  return { ok: true, wrapped_mac_key: wrapped.wrapped_key };
 }
 
 function requireReadySession(callerId, sid) {
-  pruneSessions();
   if (!sid) return { ok: false, reason: "missing_session_id" };
 
   const s = sessionStore.get(String(sid));
   if (!s)                       return { ok: false, reason: "unknown_session" };
+  if (s.expiresAt <= Date.now()) {
+    sessionStore.delete(String(sid));
+    return { ok: false, reason: "unknown_session" };
+  }
   if (s.callerId !== callerId)  return { ok: false, reason: "session_caller_mismatch" };
   if (s.state !== "ready")      return { ok: false, reason: "bad_session_state" };
   if (s.opsLeft <= 0)           return { ok: false, reason: "session_ops_exhausted" };
 
   return { ok: true, session: s };
+}
+
+function canonicalize(v) {
+  if (v === null || v === undefined) return v;
+  if (Array.isArray(v)) return v.map(canonicalize);
+  if (typeof v === "object") {
+    const out = {};
+    for (const k of Object.keys(v).sort()) out[k] = canonicalize(v[k]);
+    return out;
+  }
+  return v;
+}
+
+function getCanonicalMacPayload(bodyObj) {
+  const cloned = JSON.parse(JSON.stringify(bodyObj || {}));
+  if (cloned.auth && typeof cloned.auth === "object") {
+    cloned.auth.mac = "";
+    cloned.auth.signature = "";
+  }
+  return JSON.stringify(canonicalize(cloned));
+}
+
+function verifyHmac(bodyObj, keyB64, macHex) {
+  try {
+    const expected = crypto
+      .createHmac("sha256", Buffer.from(String(keyB64), "base64"))
+      .update(getCanonicalMacPayload(bodyObj))
+      .digest();
+    const actual = Buffer.from(String(macHex), "hex");
+    return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
+}
+
+function rememberSessionNonce(session, nonce) {
+  const now = Date.now();
+  if (now >= session.nextNoncePruneAt || session.macNonces.size >= MAX_SESSION_NONCES) {
+    for (const [k, exp] of session.macNonces) {
+      if (exp <= now) session.macNonces.delete(k);
+    }
+    session.nextNoncePruneAt = now + MAC_TS_WINDOW_SEC * 1000;
+  }
+  if (session.macNonces.has(nonce)) return false;
+  while (session.macNonces.size >= MAX_SESSION_NONCES) {
+    const firstKey = session.macNonces.keys().next().value;
+    if (!firstKey) break;
+    session.macNonces.delete(firstKey);
+  }
+  session.macNonces.set(nonce, now + MAC_TS_WINDOW_SEC * 1000);
+  return true;
+}
+
+function verifySessionMacAuth(body) {
+  const auth = body?.auth;
+  if (!auth || typeof auth !== "object") return { valid: false, reason: "missing_auth" };
+
+  const { caller_id, timestamp, nonce, session_id, mac } = auth;
+  if (!caller_id) return { valid: false, reason: "missing_caller_id" };
+  if (timestamp === undefined || timestamp === null) return { valid: false, reason: "missing_timestamp" };
+  if (!nonce) return { valid: false, reason: "missing_nonce" };
+  if (!session_id) return { valid: false, reason: "missing_session_id" };
+  if (!mac) return { valid: false, reason: "missing_mac" };
+
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return { valid: false, reason: "bad_timestamp" };
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSec - ts) > MAC_TS_WINDOW_SEC) {
+    return { valid: false, reason: "timestamp_out_of_window" };
+  }
+
+  const sessionCheck = requireReadySession(String(caller_id), String(session_id));
+  if (!sessionCheck.ok) return { valid: false, reason: sessionCheck.reason };
+  const session = sessionCheck.session;
+  if (!session.macKey) return { valid: false, reason: "missing_session_mac_key" };
+
+  if (!verifyHmac(body, session.macKey, String(mac))) {
+    return { valid: false, reason: "bad_mac" };
+  }
+  if (!rememberSessionNonce(session, String(nonce))) {
+    return { valid: false, reason: "replay_nonce_reused" };
+  }
+
+  return { valid: true, caller_id: String(caller_id), session };
 }
 
 function isToolInvocationAllowed(toolName) {
@@ -198,8 +307,6 @@ function stripForDownstream(body) {
   if (body?.params !== undefined) out.params = body.params;
   return out;
 }
-
-// ── MCP2 process management ───────────────────────────────────────────────────
 
 let mcp2Proc = null;
 let mcp2Rl   = null;
@@ -315,10 +422,9 @@ app.get("/metrics", (_req, res) => res.json({
  * ├─────────────────────────────────────────────────────────────────────┤
  * │ Layer 2 — Transport security (TLS / mTLS)                          │
  * ├─────────────────────────────────────────────────────────────────────┤
- * │ Layer 3 — Cryptographic identity (delegated to Auth Server)        │
- * │   Auth Server verifies RSA-SHA256 signature, timestamp window,     │
- * │   and nonce.  Gateway receives {valid, caller_id} or {valid,       │
- * │   reason} and enforces the decision.                               │
+ * │ Layer 3 — Cryptographic identity                                  │
+ * │   Session setup uses RSA-SHA256 via Auth Server. Ready sessions    │
+ * │   may use a cheaper session-bound MAC for subsequent tool calls.   │
  * ├─────────────────────────────────────────────────────────────────────┤
  * │ Layer 4 — mTLS CN binding (optional)                               │
  * ├─────────────────────────────────────────────────────────────────────┤
@@ -345,8 +451,14 @@ app.post("/rpc", async (req, res) => {
     }
   }
 
-  // Layer 3 — Cryptographic identity (remote)
-  const authResult = await callRemoteAuth(body);
+  // Layer 3 — Cryptographic identity.
+  const wantsSessionMac =
+    body.method === "tools/call" &&
+    !RESERVED_TOOLS.has(toolName) &&
+    body?.auth?.mac;
+  const authResult = wantsSessionMac
+    ? verifySessionMacAuth(body)
+    : await callRemoteAuth(body);
   if (!authResult.valid) {
     return res.status(403).json(jsonRpcErrorObj(body.id, 403, authResult.reason));
   }
@@ -391,13 +503,15 @@ app.post("/rpc", async (req, res) => {
       }
       return res.json({
         jsonrpc: "2.0", id: body.id ?? null,
-        result: { status: "ok", session_id: String(sid) },
+        result: { status: "ok", session_id: String(sid), wrapped_mac_key: ready.wrapped_mac_key },
       });
     }
   }
 
   if (body.method === "tools/call") {
-    const sessionCheck = requireReadySession(callerId, body.auth?.session_id);
+    const sessionCheck = authResult.session
+      ? { ok: true, session: authResult.session }
+      : requireReadySession(callerId, body.auth?.session_id);
     if (!sessionCheck.ok) {
       return res.status(403).json(jsonRpcErrorObj(body.id, 403, sessionCheck.reason));
     }
@@ -414,8 +528,6 @@ app.post("/rpc", async (req, res) => {
     return res.status(502).json(jsonRpcErrorObj(body.id, 502, `downstream_error:${e.message}`));
   }
 });
-
-// ── Server startup ────────────────────────────────────────────────────────────
 
 function startServer() {
   const logBanner = () => {

@@ -1,6 +1,6 @@
 ╔════════════════════════════════════════════════════╗
 ║   Secure MCP Gateway — Benchmark                   ║
-║   requests: 500   warmup: 20   sessions: 50        ║
+║   requests: 500   warmup: 10   sessions: 50        ║
 ╚════════════════════════════════════════════════════╝
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -8,18 +8,20 @@
 ├──────────────────────────┬───────┬───────┬───────┬───────┬───────┬────────┤
 │ Scenario                 │  mean │   min │   max │   p50 │   p95 │    p99 │
 ├──────────────────────────┼───────┼───────┼───────┼───────┼───────┼────────┤
-│ baseline                 │ 0.376 │ 0.305 │ 0.989 │ 0.365 │ 0.461 │  0.640 │
-│ defended                 │ 1.281 │ 1.078 │ 5.967 │ 1.242 │ 1.444 │  1.700 │
-│ session_establishment    │ 3.088 │ 2.849 │ 3.772 │ 3.061 │ 3.333 │  3.772 │
+│ baseline                 │ 0.377 │ 0.245 │ 1.079 │ 0.359 │ 0.520 │  0.828 │
+│ defended                 │ 0.363 │ 0.269 │ 2.061 │ 0.345 │ 0.453 │  0.795 │
+│ session_establishment    │ 4.857 │ 4.116 │ 6.916 │ 4.690 │ 6.524 │  6.916 │
 └──────────────────────────┴───────┴───────┴───────┴───────┴───────┴────────┘
 
-  Gateway overhead: +0.905 ms mean (+240.7% relative to baseline)
+  Gateway overhead: -0.014 ms mean (-3.7% relative to baseline)
+  Note: caller-side authenticator generation is excluded from the defended timed region.
+        Set BENCH_INCLUDE_CLIENT_SIGNING=true to measure end-to-end security-path latency.
 
   Gateway resource usage (during benchmark load):
-    RSS memory  : 54.53 MB → 73.45 MB  (Δ 18.92 MB)
-    Heap used   : 8.17 MB → 11.00 MB  (Δ 2.83 MB)
-    CPU user    : 196.0 ms
-    CPU system  : 29.9 ms
+    RSS memory  : 56.52 MB → 72.80 MB  (Δ 16.28 MB)
+    Heap used   : 8.42 MB → 16.51 MB  (Δ 8.10 MB)
+    CPU user    : 161.7 ms
+    CPU system  : 21.4 ms
 
   Raw data → /Users/carol/Desktop/Secure-MCP-Gateway-New/benchmark_results.csv
   Plot with: pandas / matplotlib / Excel / R

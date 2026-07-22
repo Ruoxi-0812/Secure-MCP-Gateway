@@ -198,6 +198,31 @@ Expected: 200 — list_allowed_directories is whitelisted
 403 [object Object]
 Expected: 403 not_allowed_method
 
+────────────────────────────────────────────────────────────
+  [ hmac_bad_mac ]
+────────────────────────────────────────────────────────────
+init: 200 [object Object]
+ready: 200 [object Object]
+403 {"jsonrpc":"2.0","id":"hmac-bad-mac","error":{"code":403,"message":"bad_mac"}}
+Expected: 403 bad_mac
+
+────────────────────────────────────────────────────────────
+  [ hmac_replay ]
+────────────────────────────────────────────────────────────
+init: 200 [object Object]
+ready: 200 [object Object]
+first: 200 {"result":{"content":[{"type":"text","text":"Allowed directories:\n/Users/carol/Desktop/Secure-MCP-Gateway-New/workspace"}],"structuredContent":{"content":"Allowed directories:\n/Users/carol/Desktop/Secure-MCP-Gateway-New/workspace"}},"jsonrpc":"2.0","id":"hmac-replay"}
+replay: 403 {"jsonrpc":"2.0","id":"hmac-replay","error":{"code":403,"message":"replay_nonce_reused"}}
+Expected: first → 200, replay → 403 replay_nonce_reused
+
+────────────────────────────────────────────────────────────
+  [ hmac_tamper_body ]
+────────────────────────────────────────────────────────────
+init: 200 [object Object]
+ready: 200 [object Object]
+403 {"jsonrpc":"2.0","id":"hmac-tamper-body","error":{"code":403,"message":"bad_mac"}}
+Expected: 403 bad_mac — request body changed after HMAC
+
 ════════════════════════════════════════════════════════════
   ALL-TESTS SUMMARY
 ════════════════════════════════════════════════════════════
@@ -226,6 +251,9 @@ Expected: 403 not_allowed_method
   ✓  write_file_denied          ran
   ✓  allowed_tool               ran
   ✓  unknown_method             ran
+  ✓  hmac_bad_mac               ran
+  ✓  hmac_replay                ran
+  ✓  hmac_tamper_body           ran
 ────────────────────────────────────────────────────────────
-  25 ran   0 skipped   0 errors
+  28 ran   0 skipped   0 errors
 ════════════════════════════════════════════════════════════
