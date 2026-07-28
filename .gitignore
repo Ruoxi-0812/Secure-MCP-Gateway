@@ -9,7 +9,6 @@ yarn-error.log*
 .env.*
 *.env
  
-malicious-mcp1/logs/
 secure-proxy/logs/
  
 secure-proxy/certs/
