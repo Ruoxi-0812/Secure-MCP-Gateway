@@ -1,7 +1,10 @@
 node_modules/
+.venv/
+venv/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
  
 .env
 .env.*
@@ -9,10 +12,9 @@ yarn-error.log*
  
 malicious-mcp1/logs/
 secure-proxy/logs/
+logs/
  
-secure-proxy/certs/*.key
-secure-proxy/certs/*.pem
-secure-proxy/certs/*.crt
+secure-proxy/certs/
  
 .DS_Store
 Thumbs.db
